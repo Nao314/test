@@ -31,23 +31,24 @@
             background-color: transparent;
             touch-action: none;
         }
-        #scoreDisplay {
+        #scoreDisplay, #levelDisplay, #missDisplay {
             position: absolute;
             top: 10px;
-            left: 10px;
             font-size: 20px;
             color: white;
             text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
             z-index: 10;
         }
+        #scoreDisplay {
+            left: 10px;
+        }
         #levelDisplay {
-            position: absolute;
-            top: 10px;
             right: 10px;
-            font-size: 20px;
-            color: white;
-            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
-            z-index: 10;
+        }
+        #missDisplay {
+            left: 50%;
+            transform: translateX(-50%);
+            transition: color 0.3s, font-weight 0.3s;
         }
         #controlsOverlay {
             position: absolute;
@@ -121,6 +122,7 @@
     <div id="gameContainer">
         <div id="scoreDisplay">スコア: 0</div>
         <div id="levelDisplay">レベル: 1</div>
+        <div id="missDisplay">ミス: 0 / 5</div>
         <canvas id="gameCanvas"></canvas>
         
         <div id="controlsOverlay">
@@ -136,7 +138,8 @@
             <div id="messageText">バランスキーパー</div>
             <div style="font-size: 18px; text-align: center; padding: 0 20px;">
                 台を左右に動かして、落ちてくるブロックをキャッチしよう！<br>
-                バランスを崩さないように注意！
+                バランスを崩さないように注意！<br>
+                ブロックを5回落とすとゲームオーバー！
             </div>
             <button id="startButton" onclick="startGame()">ゲームスタート</button>
         </div>
@@ -171,6 +174,12 @@
         const gravity = 0.3;
         let lastSpawnTime = 0;
         let spawnDelay = 2000;
+        // ブロックを落とした回数をカウント
+        let droppedBlocksCount = 0;
+        // 許容できる落下回数
+        const maxDroppedBlocks = 5;
+        // ミスカウンター表示用
+        let missDisplay;
         
         // DOM要素の参照を取得する関数
         function initializeDOM() {
@@ -178,6 +187,7 @@
             ctx = canvas.getContext('2d');
             scoreDisplay = document.getElementById('scoreDisplay');
             levelDisplay = document.getElementById('levelDisplay');
+            missDisplay = document.getElementById('missDisplay');
             messageOverlay = document.getElementById('messageOverlay');
             messageText = document.getElementById('messageText');
             leftControl = document.getElementById('leftControl');
@@ -220,6 +230,7 @@
             // ゲーム変数をリセット
             score = 0;
             level = 1;
+            droppedBlocksCount = 0;
             gameOver = false;
             gameRunning = true;
             blocks = [];
@@ -229,6 +240,7 @@
             // スコアとレベルの表示を更新
             scoreDisplay.textContent = `スコア: ${score}`;
             levelDisplay.textContent = `レベル: ${level}`;
+            missDisplay.textContent = `ミス: ${droppedBlocksCount} / ${maxDroppedBlocks}`;
             
             // メッセージオーバーレイを非表示
             messageOverlay.style.display = 'none';
@@ -237,11 +249,12 @@
             lastSpawnTime = Date.now();
             if (animationFrameId !== null) {
                 cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
             }
             
             // ゲームループを開始
             console.log('Starting game loop');
-            gameLoop();
+            animationFrameId = requestAnimationFrame(gameLoop);
         }
         
         // ゲームループ
@@ -384,12 +397,29 @@
                         }
                     }
                     
-                    // 画面下に落ちたらブロックを削除
+                    // 画面下に落ちたらブロックを削除してミスカウントを増やす
                     if (block.y > canvas.height) {
                         blocks.splice(i, 1);
                         i--;
                         score = Math.max(0, score - 5); // スコア減少
                         scoreDisplay.textContent = `スコア: ${score}`;
+                        
+                        // ミスカウントを増やす
+                        droppedBlocksCount++;
+                        missDisplay.textContent = `ミス: ${droppedBlocksCount} / ${maxDroppedBlocks}`;
+                        
+                        // ミス表示を強調
+                        missDisplay.style.color = 'red';
+                        missDisplay.style.fontWeight = 'bold';
+                        setTimeout(() => {
+                            missDisplay.style.color = 'white';
+                            missDisplay.style.fontWeight = 'normal';
+                        }, 500);
+                        
+                        // 最大ミス回数に達したらゲームオーバー
+                        if (droppedBlocksCount >= maxDroppedBlocks) {
+                            gameOver = true;
+                        }
                     }
                 }
             }
@@ -611,7 +641,7 @@
             platformSpeed = 10 + level;
             gravity = 0.3 + level * 0.05;
             
-            // レベルアップメッセージをフラッシュ表示（ゲームループを停止させない）
+            // レベルアップメッセージの作成と表示
             const gameContainer = document.getElementById('gameContainer');
             if (gameContainer) {
                 const levelUpMsg = document.createElement('div');
@@ -626,26 +656,28 @@
                 levelUpMsg.style.textShadow = '2px 2px 4px rgba(0, 0, 0, 0.5)';
                 levelUpMsg.style.zIndex = '15';
                 levelUpMsg.style.pointerEvents = 'none'; // イベントを通過させる
+                levelUpMsg.style.opacity = '0'; // 最初は非表示
                 
                 gameContainer.appendChild(levelUpMsg);
                 
-                // アニメーションを使ってメッセージをフェードアウト
-                levelUpMsg.style.transition = 'opacity 1.5s ease-out';
-                
-                // 即座に表示
-                levelUpMsg.style.opacity = '1';
-                
-                // フェードアウト開始
-                setTimeout(() => {
-                    levelUpMsg.style.opacity = '0';
-                }, 300);
-                
-                // フェードアウト完了後に削除
-                setTimeout(() => {
-                    if (levelUpMsg.parentNode === gameContainer) {
-                        gameContainer.removeChild(levelUpMsg);
-                    }
-                }, 1800);
+                // メッセージを表示（非同期でステートを変更）
+                requestAnimationFrame(() => {
+                    // フェードイン
+                    levelUpMsg.style.transition = 'opacity 0.5s ease';
+                    levelUpMsg.style.opacity = '1';
+                    
+                    // 一定時間後にフェードアウト
+                    setTimeout(() => {
+                        levelUpMsg.style.opacity = '0';
+                        
+                        // フェードアウト完了後に要素を削除
+                        setTimeout(() => {
+                            if (levelUpMsg.parentNode === gameContainer) {
+                                gameContainer.removeChild(levelUpMsg);
+                            }
+                        }, 500);
+                    }, 1000);
+                });
             }
         }
         
@@ -765,6 +797,21 @@
                     messageText.textContent = 'ゲームオーバー';
                 }
                 
+                // ゲームオーバーの理由を表示
+                let reasonText = '';
+                if (droppedBlocksCount >= maxDroppedBlocks) {
+                    reasonText = `ブロックを${maxDroppedBlocks}回落としてしまいました`;
+                } else {
+                    reasonText = 'バランスが崩れてしまいました';
+                }
+                
+                const reasonElement = document.createElement('div');
+                reasonElement.textContent = reasonText;
+                reasonElement.style.fontSize = '20px';
+                reasonElement.style.marginTop = '10px';
+                reasonElement.style.marginBottom = '10px';
+                messageOverlay.appendChild(reasonElement);
+                
                 // リスタートボタン
                 const restartButton = document.createElement('button');
                 restartButton.id = 'restartButton';
@@ -781,6 +828,13 @@
                 finalScore.style.fontSize = '24px';
                 finalScore.style.marginTop = '20px';
                 messageOverlay.appendChild(finalScore);
+                
+                // レベル表示
+                const finalLevel = document.createElement('div');
+                finalLevel.textContent = `到達レベル: ${level}`;
+                finalLevel.style.fontSize = '20px';
+                finalLevel.style.marginTop = '10px';
+                messageOverlay.appendChild(finalLevel);
                 
                 // スタートボタンを非表示
                 const startButton = document.getElementById('startButton');
