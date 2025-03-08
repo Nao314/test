@@ -1,4 +1,9 @@
-<!DOCTYPE html>
+// スコア更新用のヘルパー関数（一貫した更新を行うため）
+            function updateScore(points) {
+                score += points;
+                scoreDisplay.textContent = `スコア: ${score}`;
+                console.log(`Score updated: ${score} (added ${points})`);
+            }<!DOCTYPE html>
 <html>
 <head>
     <title>バランスキーパー</title>
@@ -423,6 +428,9 @@
                                 missDisplay.style.fontWeight = 'normal';
                             }, 500);
                             
+                            // スコア減少（統一された関数を使用）
+                            updateScore(-5);
+                            
                             // 最大ミス回数に達したらゲームオーバー
                             if (droppedBlocksCount >= maxDroppedBlocks) {
                                 gameOver = true;
@@ -507,9 +515,8 @@
                         block.onPlatform = true;
                         block.restingOn = null;
                         
-                        // スコア加算
-                        score += 10;
-                        scoreDisplay.textContent = `スコア: ${score}`;
+                        // スコア加算（統一された関数を使用）
+                        updateScore(10);
                         
                         return true;
                     }
@@ -551,9 +558,8 @@
                         movingBlock.onPlatform = false;
                         movingBlock.restingOn = staticBlock;
                         
-                        // スコア加算
-                        score += 5;
-                        scoreDisplay.textContent = `スコア: ${score}`;
+                        // スコア加算（統一された関数を使用）
+                        updateScore(5);
                         
                         return true;
                     }
@@ -702,9 +708,8 @@
                         }, 1000);
                     }
                     
-                    // レベルアップボーナス
-                    score += 20;
-                    scoreDisplay.textContent = `スコア: ${score}`;
+                    // レベルアップボーナス（統一された関数を使用）
+                    updateScore(20);
                     
                     console.log(`Level up complete. New level: ${level}, score: ${score}`);
                 } catch (err) {
@@ -815,48 +820,51 @@
                 ctx.fillRect(angleIndicatorX + angleIndicatorWidth / 2 - 1, angleIndicatorY, 2, angleIndicatorHeight);
                 
                 // 次のレベルまでの進捗バー
-                const progressBarWidth = 200;
-                const progressBarHeight = 10;
-                const progressBarX = canvas.width / 2 - progressBarWidth / 2;
-                const progressBarY = 80;
-                
-                // 進捗バーの背景
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-                ctx.fillRect(progressBarX, progressBarY, progressBarWidth, progressBarHeight);
-                
-                // 進捗の計算（安全に行う）
-                const nextLevelScore = level * 50;
-                const previousLevelScore = (level - 1) * 50;
-                
-                // スコアと前のレベルスコアの差分（負にならないよう保証）
-                const scoreDifference = Math.max(0, score - previousLevelScore);
-                // レベル間のスコア差分
-                const levelScoreDifference = nextLevelScore - previousLevelScore;
-                // 進捗率（0〜1の範囲に制限）
-                let progressPercentage = 0;
-                if (levelScoreDifference > 0) { // ゼロ除算を防止
-                    progressPercentage = Math.min(1, scoreDifference / levelScoreDifference);
-                }
-                
-                // 進捗バーの幅を計算
-                const progressWidth = progressPercentage * progressBarWidth;
-                
-                // 進捗バーの描画
-                ctx.fillStyle = '#4CAF50';
-                ctx.fillRect(progressBarX, progressBarY, progressWidth, progressBarHeight);
-                
-                // 「次のレベルまで」のテキスト
-                ctx.fillStyle = 'white';
-                ctx.font = '12px Arial';
-                ctx.textAlign = 'center';
-                
-                // 次のレベルまでの残りポイントを計算（0未満にならないように）
-                const pointsToNextLevel = Math.max(0, nextLevelScore - score);
-                
-                if (pointsToNextLevel > 0) {
-                    ctx.fillText(`次のLv.${level+1}まであと${pointsToNextLevel}点`, canvas.width / 2, progressBarY + 25);
-                } else {
-                    ctx.fillText(`Lv.${level+1}に上がる準備完了！`, canvas.width / 2, progressBarY + 25);
+                try {
+                    const progressBarWidth = 200;
+                    const progressBarHeight = 10;
+                    const progressBarX = canvas.width / 2 - progressBarWidth / 2;
+                    const progressBarY = 80;
+                    
+                    // 進捗バーの背景
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+                    ctx.fillRect(progressBarX, progressBarY, progressBarWidth, progressBarHeight);
+                    
+                    // 次のレベルの必要スコアと現在のレベルの開始スコア
+                    const nextLevelScore = level * 50;
+                    const previousLevelScore = (level - 1) * 50;
+                    
+                    // 現在のレベル内での進捗率を計算
+                    let progressPercentage = 0;
+                    const levelDiff = nextLevelScore - previousLevelScore;
+                    if (levelDiff > 0) { // ゼロ除算を防止
+                        // 現在のスコアから前のレベルのスコアを引いた値を、レベル間の差で割る
+                        const currentLevelProgress = score - previousLevelScore;
+                        progressPercentage = Math.min(1, Math.max(0, currentLevelProgress / levelDiff));
+                    }
+                    
+                    // 進捗バーの幅を計算
+                    const progressWidth = progressPercentage * progressBarWidth;
+                    
+                    // 進捗バーを描画
+                    ctx.fillStyle = '#4CAF50';
+                    ctx.fillRect(progressBarX, progressBarY, progressWidth, progressBarHeight);
+                    
+                    // 「次のレベルまで」のテキスト
+                    ctx.fillStyle = 'white';
+                    ctx.font = '12px Arial';
+                    ctx.textAlign = 'center';
+                    
+                    // 次のレベルまでの残りポイント
+                    const pointsToNextLevel = Math.max(0, nextLevelScore - score);
+                    
+                    if (pointsToNextLevel > 0) {
+                        ctx.fillText(`次のLv.${level+1}まであと${pointsToNextLevel}点`, canvas.width / 2, progressBarY + 25);
+                    } else {
+                        ctx.fillText(`Lv.${level+1}に上がる準備完了！`, canvas.width / 2, progressBarY + 25);
+                    }
+                } catch (err) {
+                    console.error('Error drawing progress bar:', err);
                 }
             }
             
