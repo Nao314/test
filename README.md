@@ -236,40 +236,48 @@
             function gameLoop() {
                 if (!gameRunning) return;
                 
-                // キー入力に基づいて台を移動
-                if (leftPressed) {
-                    movePlatform(-1);
-                }
-                if (rightPressed) {
-                    movePlatform(1);
-                }
-                
-                // 現在時刻を取得
-                const currentTime = Date.now();
-                
-                // 一定間隔でブロックを生成
-                if (currentTime - lastSpawnTime > spawnDelay) {
-                    spawnBlock();
-                    lastSpawnTime = currentTime;
-                    // レベルに応じてスポーン間隔を調整
-                    spawnDelay = 2000 - (level * 100);
-                    spawnDelay = Math.max(spawnDelay, 500); // 最小スポーン間隔
-                }
-                
-                // ゲーム状態を更新
-                update();
-                
-                // 描画
-                draw();
-                
-                // レベルアップのチェック
-                checkLevelUp();
-                
-                // ゲームオーバーでない場合は次のフレームを要求
-                if (!gameOver) {
-                    animationFrameId = requestAnimationFrame(gameLoop);
-                } else {
-                    showGameOver();
+                try {
+                    // キー入力に基づいて台を移動
+                    if (leftPressed) {
+                        movePlatform(-1);
+                    }
+                    if (rightPressed) {
+                        movePlatform(1);
+                    }
+                    
+                    // 現在時刻を取得
+                    const currentTime = Date.now();
+                    
+                    // 一定間隔でブロックを生成
+                    if (currentTime - lastSpawnTime > spawnDelay) {
+                        spawnBlock();
+                        lastSpawnTime = currentTime;
+                        // レベルに応じてスポーン間隔を調整
+                        spawnDelay = 2000 - (level * 100);
+                        spawnDelay = Math.max(spawnDelay, 500); // 最小スポーン間隔
+                    }
+                    
+                    // ゲーム状態を更新
+                    update();
+                    
+                    // 描画
+                    draw();
+                    
+                    // レベルアップのチェック
+                    checkLevelUp();
+                    
+                    // ゲームオーバーでない場合は次のフレームを要求
+                    if (!gameOver) {
+                        animationFrameId = requestAnimationFrame(gameLoop);
+                    } else {
+                        showGameOver();
+                    }
+                } catch (err) {
+                    console.error('Error in game loop:', err);
+                    // エラーが発生しても続行を試みる
+                    if (!gameOver && gameRunning) {
+                        animationFrameId = requestAnimationFrame(gameLoop);
+                    }
                 }
             }
             
@@ -277,7 +285,11 @@
             function checkLevelUp() {
                 const requiredScore = level * 50;
                 if (score >= requiredScore) {
-                    levelUp();
+                    console.log(`Level up check: score=${score}, required=${requiredScore}, level=${level}`);
+                    // レベルアップの前にスコアをチェック（既に処理済みか確認）
+                    if (level * 50 <= score) {
+                        levelUp();
+                    }
                 }
             }
             
@@ -624,49 +636,80 @@
             
             // レベルアップ
             function levelUp() {
-                // レベルアップの判定（既に上がっていたら処理しない）
-                if (score < level * 50) {
+                console.log(`Executing levelUp: current level=${level}, score=${score}`);
+                
+                // 次のレベルに必要なスコアを計算
+                const requiredScore = level * 50;
+                
+                // 既にレベルアップ条件を満たしていない場合は処理しない
+                if (score < requiredScore) {
+                    console.log('Score too low for level up, returning');
                     return;
                 }
                 
-                level++;
+                // レベルを上げる
+                const newLevel = level + 1;
+                console.log(`Increasing level from ${level} to ${newLevel}`);
+                level = newLevel;
                 levelDisplay.textContent = `レベル: ${level}`;
                 
                 // 難易度の調整
                 platformSpeed = 10 + level;
                 gravity = 0.3 + level * 0.05;
                 
-                // レベルアップメッセージを表示
-                const levelUpMsg = document.createElement('div');
-                levelUpMsg.textContent = `レベル ${level}！`;
-                levelUpMsg.style.position = 'absolute';
-                levelUpMsg.style.top = '50%';
-                levelUpMsg.style.left = '50%';
-                levelUpMsg.style.transform = 'translate(-50%, -50%)';
-                levelUpMsg.style.color = 'yellow';
-                levelUpMsg.style.fontSize = '48px';
-                levelUpMsg.style.fontWeight = 'bold';
-                levelUpMsg.style.textShadow = '2px 2px 4px rgba(0, 0, 0, 0.5)';
-                levelUpMsg.style.zIndex = '15';
-                levelUpMsg.style.pointerEvents = 'none';
-                
-                const gameContainer = document.getElementById('gameContainer');
-                gameContainer.appendChild(levelUpMsg);
-                
-                // アニメーションでフェードイン・フェードアウト
-                setTimeout(() => {
-                    levelUpMsg.style.transition = 'opacity 0.5s';
-                    levelUpMsg.style.opacity = '0';
-                    setTimeout(() => {
-                        if (levelUpMsg.parentNode) {
-                            levelUpMsg.parentNode.removeChild(levelUpMsg);
-                        }
-                    }, 500);
-                }, 1000);
-                
-                // レベルアップボーナス
-                score += 20;
-                scoreDisplay.textContent = `スコア: ${score}`;
+                try {
+                    // レベルアップメッセージを表示
+                    const levelUpMsg = document.createElement('div');
+                    levelUpMsg.textContent = `レベル ${level}！`;
+                    levelUpMsg.style.position = 'absolute';
+                    levelUpMsg.style.top = '50%';
+                    levelUpMsg.style.left = '50%';
+                    levelUpMsg.style.transform = 'translate(-50%, -50%)';
+                    levelUpMsg.style.color = 'yellow';
+                    levelUpMsg.style.fontSize = '48px';
+                    levelUpMsg.style.fontWeight = 'bold';
+                    levelUpMsg.style.textShadow = '2px 2px 4px rgba(0, 0, 0, 0.5)';
+                    levelUpMsg.style.zIndex = '15';
+                    levelUpMsg.style.pointerEvents = 'none';
+                    levelUpMsg.style.opacity = '1'; // 最初から表示
+                    
+                    const gameContainer = document.getElementById('gameContainer');
+                    if (gameContainer) {
+                        gameContainer.appendChild(levelUpMsg);
+                        
+                        // 安全なタイマー実装
+                        setTimeout(function() {
+                            try {
+                                levelUpMsg.style.transition = 'opacity 0.5s';
+                                levelUpMsg.style.opacity = '0';
+                                
+                                setTimeout(function() {
+                                    try {
+                                        if (levelUpMsg.parentNode) {
+                                            levelUpMsg.parentNode.removeChild(levelUpMsg);
+                                        }
+                                    } catch (err) {
+                                        console.error('Error removing level up message:', err);
+                                    }
+                                }, 500);
+                            } catch (err) {
+                                console.error('Error fading out level up message:', err);
+                                // エラーが発生しても要素を削除
+                                if (levelUpMsg.parentNode) {
+                                    levelUpMsg.parentNode.removeChild(levelUpMsg);
+                                }
+                            }
+                        }, 1000);
+                    }
+                    
+                    // レベルアップボーナス
+                    score += 20;
+                    scoreDisplay.textContent = `スコア: ${score}`;
+                    
+                    console.log(`Level up complete. New level: ${level}, score: ${score}`);
+                } catch (err) {
+                    console.error('Error in levelUp function:', err);
+                }
             }
             
             // 描画
@@ -781,10 +824,21 @@
                 ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
                 ctx.fillRect(progressBarX, progressBarY, progressBarWidth, progressBarHeight);
                 
-                // 進捗の計算 (現在のスコア / 次のレベルに必要なスコア)
+                // 進捗の計算（安全に行う）
                 const nextLevelScore = level * 50;
                 const previousLevelScore = (level - 1) * 50;
-                const progressPercentage = Math.min(1, (score - previousLevelScore) / (nextLevelScore - previousLevelScore));
+                
+                // スコアと前のレベルスコアの差分（負にならないよう保証）
+                const scoreDifference = Math.max(0, score - previousLevelScore);
+                // レベル間のスコア差分
+                const levelScoreDifference = nextLevelScore - previousLevelScore;
+                // 進捗率（0〜1の範囲に制限）
+                let progressPercentage = 0;
+                if (levelScoreDifference > 0) { // ゼロ除算を防止
+                    progressPercentage = Math.min(1, scoreDifference / levelScoreDifference);
+                }
+                
+                // 進捗バーの幅を計算
                 const progressWidth = progressPercentage * progressBarWidth;
                 
                 // 進捗バーの描画
