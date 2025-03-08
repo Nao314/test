@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <!-- ビューポート設定でiPadなどの画面にフィット -->
+  <!-- ビューポート設定で各デバイスにフィット -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>インベーダー風ゲーム</title>
   <style>
@@ -10,13 +10,15 @@
       margin: 0;
       overflow: hidden;
       background: black;
+      color: white;
+      font-family: sans-serif;
     }
     canvas {
       display: block;
       margin: 0 auto;
       background: #000;
     }
-    /* 画面下部のタッチコントロール */
+    /* タッチ操作用コントロール */
     #controls {
       position: fixed;
       bottom: 20px;
@@ -36,25 +38,41 @@
       font-size: 30px;
       user-select: none;
     }
+    /* リスタート用ボタン（ゲームオーバー時に表示） */
+    #restartBtn {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      padding: 20px 40px;
+      font-size: 24px;
+      background: rgba(255,255,255,0.8);
+      border: none;
+      border-radius: 10px;
+      display: none;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
-  <!-- ゲーム描画用のキャンバス -->
+  <!-- ゲーム描画用キャンバス -->
   <canvas id="gameCanvas" width="480" height="640"></canvas>
   
-  <!-- タッチ操作用のコントロール -->
+  <!-- タッチ操作用のボタン -->
   <div id="controls">
     <div id="leftBtn" class="button">&#8592;</div>
     <div id="fireBtn" class="button">&#9679;</div>
     <div id="rightBtn" class="button">&#8594;</div>
   </div>
+
+  <!-- ゲームオーバー時に表示されるリスタートボタン -->
+  <button id="restartBtn">Restart</button>
   
   <script>
-    // キャンバスとコンテキストの設定
     const canvas = document.getElementById("gameCanvas");
     const ctx = canvas.getContext("2d");
 
-    // 自機（プレイヤー）の設定
+    // プレイヤー（自機）の設定
     const ship = {
       x: canvas.width / 2 - 15,
       y: canvas.height - 40,
@@ -63,28 +81,43 @@
       speed: 5
     };
 
-    // 弾とインベーダー用の配列
+    // 弾および爆発エフェクト用の配列
     const bullets = [];
-    const invaders = [];
+    const explosions = [];
+
+    // インベーダーの設定
     const invaderRows = 4;
     const invaderCols = 8;
     const invaderWidth = 30;
     const invaderHeight = 20;
     const invaderPadding = 10;
-    const invaderOffsetTop = 30;
     const invaderOffsetLeft = 30;
-    let invaderDirection = 1; // 1:右移動、-1:左移動
-    const invaderSpeed = 1;
+    const invaderOffsetTop = 30;
+    let score = 0;
+    let gameOver = false;
 
-    // インベーダーの初期配置
+    // 敵全体の動きを管理するための形成オフセット
+    let formationOffsetX = invaderOffsetLeft;
+    let formationOffsetY = invaderOffsetTop;
+    let formationDirection = 1; // 1:右方向, -1:左方向
+    const invaderSpeed = 1;
+    const dropDistance = 20;
+    const boundaryMargin = 10;
+
+    // インベーダーの各個体の状態（status: 1=生存、0=破壊済み）
+    const invaders = [];
     for (let r = 0; r < invaderRows; r++) {
       invaders[r] = [];
       for (let c = 0; c < invaderCols; c++) {
-        invaders[r][c] = { x: 0, y: 0, status: 1 };
+        invaders[r][c] = { status: 1 };
       }
     }
 
-    // 自機の描画
+    // 左右操作のフラグ
+    let leftPressed = false;
+    let rightPressed = false;
+
+    // プレイヤーの描画
     function drawShip() {
       ctx.fillStyle = "#00FF00";
       ctx.fillRect(ship.x, ship.y, ship.width, ship.height);
@@ -98,17 +131,26 @@
       });
     }
 
-    // インベーダーの描画
+    // 爆発エフェクトの描画
+    function drawExplosions() {
+      explosions.forEach(exp => {
+        ctx.save();
+        ctx.globalAlpha = exp.alpha;
+        ctx.beginPath();
+        ctx.arc(exp.x, exp.y, exp.radius, 0, Math.PI * 2);
+        ctx.fillStyle = "#FFA500";
+        ctx.fill();
+        ctx.restore();
+      });
+    }
+
+    // インベーダーの描画（形成オフセットを利用）
     function drawInvaders() {
       for (let r = 0; r < invaderRows; r++) {
         for (let c = 0; c < invaderCols; c++) {
-          let inv = invaders[r][c];
-          if (inv.status === 1) {
-            // インベーダーの位置を計算
-            const invX = c * (invaderWidth + invaderPadding) + invaderOffsetLeft;
-            const invY = r * (invaderHeight + invaderPadding) + invaderOffsetTop;
-            inv.x = invX;
-            inv.y = invY;
+          if (invaders[r][c].status === 1) {
+            const invX = formationOffsetX + c * (invaderWidth + invaderPadding);
+            const invY = formationOffsetY + r * (invaderHeight + invaderPadding);
             ctx.fillStyle = "#FF0000";
             ctx.fillRect(invX, invY, invaderWidth, invaderHeight);
           }
@@ -116,7 +158,14 @@
       }
     }
 
-    // 弾の更新（上方向へ移動）
+    // スコアの描画
+    function drawScore() {
+      ctx.fillStyle = "white";
+      ctx.font = "20px sans-serif";
+      ctx.fillText("Score: " + score, 10, 25);
+    }
+
+    // 弾の更新
     function updateBullets() {
       for (let i = 0; i < bullets.length; i++) {
         bullets[i].y -= 7;
@@ -127,21 +176,42 @@
       }
     }
 
-    // 弾とインベーダーの衝突判定
+    // 爆発エフェクトの更新
+    function updateExplosions() {
+      for (let i = 0; i < explosions.length; i++) {
+        explosions[i].radius += 1;
+        explosions[i].alpha -= 0.05;
+        if (explosions[i].alpha <= 0) {
+          explosions.splice(i, 1);
+          i--;
+        }
+      }
+    }
+
+    // 弾とインベーダーの衝突判定と、衝突時の処理（スコア加算・爆発エフェクト追加）
     function collisionDetection() {
       bullets.forEach((bullet, bIndex) => {
         for (let r = 0; r < invaderRows; r++) {
           for (let c = 0; c < invaderCols; c++) {
-            let inv = invaders[r][c];
-            if (inv.status === 1) {
+            if (invaders[r][c].status === 1) {
+              const invX = formationOffsetX + c * (invaderWidth + invaderPadding);
+              const invY = formationOffsetY + r * (invaderHeight + invaderPadding);
               if (
-                bullet.x > inv.x &&
-                bullet.x < inv.x + invaderWidth &&
-                bullet.y > inv.y &&
-                bullet.y < inv.y + invaderHeight
+                bullet.x > invX &&
+                bullet.x < invX + invaderWidth &&
+                bullet.y > invY &&
+                bullet.y < invY + invaderHeight
               ) {
-                inv.status = 0; // 当たったインベーダーを消去
+                invaders[r][c].status = 0;
                 bullets.splice(bIndex, 1);
+                score += 10;
+                // 爆発エフェクトを生成（敵の中心位置で開始）
+                explosions.push({
+                  x: invX + invaderWidth / 2,
+                  y: invY + invaderHeight / 2,
+                  radius: 0,
+                  alpha: 1.0
+                });
                 return;
               }
             }
@@ -150,63 +220,73 @@
       });
     }
 
-    // インベーダーの移動処理
+    // インベーダーの移動処理（画面端で左右反転し、下に降りる）
     function updateInvaders() {
-      let rightMost = 0;
-      let leftMost = canvas.width;
-      for (let r = 0; r < invaderRows; r++) {
-        for (let c = 0; c < invaderCols; c++) {
-          const inv = invaders[r][c];
-          if (inv.status === 1) {
-            rightMost = Math.max(rightMost, inv.x + invaderWidth);
-            leftMost = Math.min(leftMost, inv.x);
-          }
-        }
+      const formationRight = formationOffsetX + (invaderCols - 1) * (invaderWidth + invaderPadding) + invaderWidth;
+      const formationLeft = formationOffsetX;
+      if ((formationRight > canvas.width - boundaryMargin && formationDirection === 1) ||
+          (formationLeft < boundaryMargin && formationDirection === -1)) {
+        formationDirection *= -1;
+        formationOffsetY += dropDistance;
+      } else {
+        formationOffsetX += invaderSpeed * formationDirection;
       }
-      // 端に到達したら方向転換＆下に移動
-      if (rightMost > canvas.width - 10 && invaderDirection === 1) {
-        invaderDirection = -1;
-        for (let r = 0; r < invaderRows; r++) {
-          for (let c = 0; c < invaderCols; c++) {
-            invaders[r][c].y += 20;
-          }
-        }
-      } else if (leftMost < 10 && invaderDirection === -1) {
-        invaderDirection = 1;
-        for (let r = 0; r < invaderRows; r++) {
-          for (let c = 0; c < invaderCols; c++) {
-            invaders[r][c].y += 20;
-          }
-        }
-      }
-      // 横移動
+    }
+
+    // ゲームオーバー判定（敵がプレイヤーに近づいた場合）
+    function checkGameOver() {
       for (let r = 0; r < invaderRows; r++) {
         for (let c = 0; c < invaderCols; c++) {
           if (invaders[r][c].status === 1) {
-            invaders[r][c].x += invaderSpeed * invaderDirection;
+            const invY = formationOffsetY + r * (invaderHeight + invaderPadding);
+            if (invY + invaderHeight >= ship.y) {
+              gameOver = true;
+              return;
+            }
           }
         }
       }
     }
 
-    // ゲームループ
+    // 描画処理（全要素を再描画）
     function draw() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       drawShip();
       drawBullets();
       drawInvaders();
-      updateBullets();
-      collisionDetection();
-      updateInvaders();
-      requestAnimationFrame(draw);
+      drawExplosions();
+      drawScore();
     }
-    draw();
 
-    // タッチ・マウス操作用のフラグ
-    let leftPressed = false;
-    let rightPressed = false;
+    // メインループ：更新→描画
+    function update() {
+      if (!gameOver) {
+        moveShip();
+        updateBullets();
+        updateExplosions();
+        collisionDetection();
+        updateInvaders();
+        checkGameOver();
+      }
+      draw();
+      if (gameOver) {
+        // ゲームオーバー時のオーバーレイ表示
+        ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "white";
+        ctx.font = "40px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("Game Over", canvas.width / 2, canvas.height / 2 - 20);
+        ctx.font = "20px sans-serif";
+        ctx.fillText("Score: " + score, canvas.width / 2, canvas.height / 2 + 20);
+        // リスタートボタンを表示
+        document.getElementById("restartBtn").style.display = "block";
+      }
+      requestAnimationFrame(update);
+    }
+    update();
 
-    // 自機の移動処理
+    // プレイヤーの移動処理
     function moveShip() {
       if (leftPressed && ship.x > 0) {
         ship.x -= ship.speed;
@@ -215,7 +295,6 @@
         ship.x += ship.speed;
       }
     }
-    setInterval(moveShip, 20);
 
     // タッチ操作用ボタンのイベント設定
     const leftBtn = document.getElementById("leftBtn");
@@ -240,11 +319,10 @@
     });
     fireBtn.addEventListener("touchstart", (e) => {
       e.preventDefault();
-      // 弾を発射（自機中央から出す）
       bullets.push({ x: ship.x + ship.width / 2 - 2, y: ship.y });
     });
 
-    // デスクトップでの操作確認用（マウス操作）
+    // デスクトップ用マウス操作
     leftBtn.addEventListener("mousedown", () => { leftPressed = true; });
     leftBtn.addEventListener("mouseup", () => { leftPressed = false; });
     rightBtn.addEventListener("mousedown", () => { rightPressed = true; });
@@ -252,6 +330,28 @@
     fireBtn.addEventListener("mousedown", () => {
       bullets.push({ x: ship.x + ship.width / 2 - 2, y: ship.y });
     });
+
+    // リスタートボタンのクリックイベント
+    document.getElementById("restartBtn").addEventListener("click", restartGame);
+
+    // ゲームリスタート処理：各変数を初期状態に戻す
+    function restartGame() {
+      ship.x = canvas.width / 2 - 15;
+      ship.y = canvas.height - 40;
+      bullets.length = 0;
+      explosions.length = 0;
+      score = 0;
+      gameOver = false;
+      formationOffsetX = invaderOffsetLeft;
+      formationOffsetY = invaderOffsetTop;
+      formationDirection = 1;
+      for (let r = 0; r < invaderRows; r++) {
+        for (let c = 0; c < invaderCols; c++) {
+          invaders[r][c].status = 1;
+        }
+      }
+      document.getElementById("restartBtn").style.display = "none";
+    }
   </script>
 </body>
 </html>
