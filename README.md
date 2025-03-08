@@ -591,7 +591,8 @@
             }
             
             // 新しい角度を計算（重さの差に基づく）
-            const weightDifference = leftWeight - rightWeight;
+            // 方向を修正：右の重さが大きいと右に傾く（正の角度）、左の重さが大きいと左に傾く（負の角度）
+            const weightDifference = rightWeight - leftWeight;
             const targetAngle = (weightDifference * 0.0005) * (1 + level * 0.1); // レベルに応じて感度が上がる
             
             // 角度を滑らかに変化させる
@@ -606,35 +607,46 @@
             level++;
             levelDisplay.textContent = `レベル: ${level}`;
             
-            // レベルアップメッセージを一時的に表示
-            const levelUpMsg = document.createElement('div');
-            levelUpMsg.textContent = `レベル ${level}！`;
-            levelUpMsg.style.position = 'absolute';
-            levelUpMsg.style.top = '50%';
-            levelUpMsg.style.left = '50%';
-            levelUpMsg.style.transform = 'translate(-50%, -50%)';
-            levelUpMsg.style.color = 'yellow';
-            levelUpMsg.style.fontSize = '48px';
-            levelUpMsg.style.fontWeight = 'bold';
-            levelUpMsg.style.textShadow = '2px 2px 4px rgba(0, 0, 0, 0.5)';
-            levelUpMsg.style.zIndex = '15';
-            const gameContainer = document.getElementById('gameContainer');
-            if (gameContainer) {
-                gameContainer.appendChild(levelUpMsg);
-                
-                // メッセージを数秒後に削除
-                setTimeout(() => {
-                    try {
-                        gameContainer.removeChild(levelUpMsg);
-                    } catch (e) {
-                        console.log('Could not remove level up message');
-                    }
-                }, 1500);
-            }
-            
             // 難易度の調整
             platformSpeed = 10 + level;
             gravity = 0.3 + level * 0.05;
+            
+            // レベルアップメッセージをフラッシュ表示（ゲームループを停止させない）
+            const gameContainer = document.getElementById('gameContainer');
+            if (gameContainer) {
+                const levelUpMsg = document.createElement('div');
+                levelUpMsg.textContent = `レベル ${level}！`;
+                levelUpMsg.style.position = 'absolute';
+                levelUpMsg.style.top = '50%';
+                levelUpMsg.style.left = '50%';
+                levelUpMsg.style.transform = 'translate(-50%, -50%)';
+                levelUpMsg.style.color = 'yellow';
+                levelUpMsg.style.fontSize = '48px';
+                levelUpMsg.style.fontWeight = 'bold';
+                levelUpMsg.style.textShadow = '2px 2px 4px rgba(0, 0, 0, 0.5)';
+                levelUpMsg.style.zIndex = '15';
+                levelUpMsg.style.pointerEvents = 'none'; // イベントを通過させる
+                
+                gameContainer.appendChild(levelUpMsg);
+                
+                // アニメーションを使ってメッセージをフェードアウト
+                levelUpMsg.style.transition = 'opacity 1.5s ease-out';
+                
+                // 即座に表示
+                levelUpMsg.style.opacity = '1';
+                
+                // フェードアウト開始
+                setTimeout(() => {
+                    levelUpMsg.style.opacity = '0';
+                }, 300);
+                
+                // フェードアウト完了後に削除
+                setTimeout(() => {
+                    if (levelUpMsg.parentNode === gameContainer) {
+                        gameContainer.removeChild(levelUpMsg);
+                    }
+                }, 1800);
+            }
         }
         
         // 描画
