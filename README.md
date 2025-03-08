@@ -2,65 +2,62 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>サンプルホームページ</title>
+  <title>簡単なクリックゲーム</title>
   <style>
-    /* 基本的なスタイル */
     body {
+      text-align: center;
       font-family: Arial, sans-serif;
-      margin: 0;
-      padding: 0;
+      margin-top: 50px;
     }
-    header, footer {
-      background: #f0f0f0;
-      padding: 20px;
-      text-align: center;
+    #game-area {
+      margin: auto;
+      width: 300px;
+      height: 300px;
+      border: 2px solid #333;
+      position: relative;
     }
-    nav {
-      background: #d0d0d0;
-      padding: 10px;
-      text-align: center;
-    }
-    nav a {
-      margin: 0 10px;
-      text-decoration: none;
-      color: #333;
-    }
-    main {
-      padding: 20px;
-    }
-    section {
-      margin-bottom: 20px;
+    .target {
+      width: 50px;
+      height: 50px;
+      background-color: red;
+      border-radius: 50%;
+      position: absolute;
+      cursor: pointer;
     }
   </style>
 </head>
 <body>
-  <header>
-    <h1>サンプルホームページ</h1>
-  </header>
-  <nav>
-    <a href="#home">ホーム</a>
-    <a href="#about">アバウト</a>
-    <a href="#contact">コンタクト</a>
-  </nav>
-  <main>
-    <section id="home">
-      <h2>ホーム</h2>
-      <p>これはサンプルのホームページです。シンプルな構造でHTMLの基本を学ぶためのコードとなっています。</p>
-    </section>
-    <section id="about">
-      <h2>アバウト</h2>
-      <p>このサイトはHTMLとCSSのテスト用に作成されました。各セクションのレイアウトやスタイルを自由にカスタマイズできます。</p>
-    </section>
-    <section id="contact">
-      <h2>コンタクト</h2>
-      <p>お問い合わせは以下のメールアドレスまでお願いします: 
-        <a href="mailto:example@example.com">example@example.com</a>
-      </p>
-    </section>
-  </main>
-  <footer>
-    <p>&copy; 2025 サンプルホームページ</p>
-  </footer>
+  <h1>簡単なクリックゲーム</h1>
+  <p>赤いターゲットをクリックしてスコアを獲得しましょう！</p>
+  <p>スコア: <span id="score">0</span></p>
+  <div id="game-area">
+    <div id="target" class="target"></div>
+  </div>
+  <script>
+    const scoreElement = document.getElementById('score');
+    const target = document.getElementById('target');
+    const gameArea = document.getElementById('game-area');
+    let score = 0;
+
+    // ゲームエリア内でランダムな位置にターゲットを移動させる関数
+    function moveTarget() {
+      const maxX = gameArea.clientWidth - target.clientWidth;
+      const maxY = gameArea.clientHeight - target.clientHeight;
+      const randomX = Math.floor(Math.random() * (maxX + 1));
+      const randomY = Math.floor(Math.random() * (maxY + 1));
+      target.style.left = randomX + 'px';
+      target.style.top = randomY + 'px';
+    }
+
+    // ターゲットがクリックされたときの処理
+    target.addEventListener('click', function() {
+      score++;
+      scoreElement.textContent = score;
+      moveTarget();
+    });
+
+    // 初期状態でターゲットを移動
+    moveTarget();
+  </script>
 </body>
 </html>
