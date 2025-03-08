@@ -328,37 +328,46 @@
         
         // 台の移動
         function movePlatform(direction) {
+            const oldPlatformX = platformX; // 移動前の位置を保存
             const moveAmount = direction * platformSpeed;
-            platformX += moveAmount;
+            
+            // 移動先の位置を計算
+            const newPlatformX = platformX + moveAmount;
             
             // 画面外に出ないように制限
-            platformX = Math.max(0, Math.min(platformX, canvas.width - platformWidth));
+            platformX = Math.max(0, Math.min(newPlatformX, canvas.width - platformWidth));
             
-            // 台の上にあるブロックも一緒に移動
-            for (let i = 0; i < blocks.length; i++) {
-                if (blocks[i].onPlatform) {
-                    blocks[i].x += moveAmount;
-                } else if (blocks[i].restingOn !== null) {
-                    // 他のブロックの上に乗っているブロックも移動
-                    let shouldMove = false;
-                    let currentBlock = blocks[i];
-                    
-                    // 下のブロックをたどって、最終的に台の上にあるか確認
-                    while (currentBlock.restingOn !== null) {
-                        const restingIndex = blocks.findIndex(b => b === currentBlock.restingOn);
-                        if (restingIndex !== -1) {
-                            currentBlock = blocks[restingIndex];
-                            if (currentBlock.onPlatform) {
-                                shouldMove = true;
+            // 実際の移動量（制限後）
+            const actualMoveAmount = platformX - oldPlatformX;
+            
+            // 実際に移動できた場合のみブロックも移動
+            if (actualMoveAmount !== 0) {
+                // 台の上にあるブロックも一緒に移動
+                for (let i = 0; i < blocks.length; i++) {
+                    if (blocks[i].onPlatform) {
+                        blocks[i].x += actualMoveAmount;
+                    } else if (blocks[i].restingOn !== null) {
+                        // 他のブロックの上に乗っているブロックも移動
+                        let shouldMove = false;
+                        let currentBlock = blocks[i];
+                        
+                        // 下のブロックをたどって、最終的に台の上にあるか確認
+                        while (currentBlock.restingOn !== null) {
+                            const restingIndex = blocks.findIndex(b => b === currentBlock.restingOn);
+                            if (restingIndex !== -1) {
+                                currentBlock = blocks[restingIndex];
+                                if (currentBlock.onPlatform) {
+                                    shouldMove = true;
+                                    break;
+                                }
+                            } else {
                                 break;
                             }
-                        } else {
-                            break;
                         }
-                    }
-                    
-                    if (shouldMove) {
-                        blocks[i].x += moveAmount;
+                        
+                        if (shouldMove) {
+                            blocks[i].x += actualMoveAmount;
+                        }
                     }
                 }
             }
@@ -504,8 +513,8 @@
                     score += 10;
                     scoreDisplay.textContent = `スコア: ${score}`;
                     
-                    // レベルアップチェック
-                    if (score >= level * 100) {
+                    // レベルアップチェック (レベルアップ条件を緩和: レベル*100 → レベル*50)
+                    if (score >= level * 50) {
                         levelUp();
                     }
                     
@@ -695,6 +704,12 @@
             ctx.fillStyle = gradient;
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             
+            // 画面端の視覚的なマーカー（移動できない領域を示す）
+            const edgeMarkerWidth = 5;
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.fillRect(0, 0, edgeMarkerWidth, canvas.height);
+            ctx.fillRect(canvas.width - edgeMarkerWidth, 0, edgeMarkerWidth, canvas.height);
+            
             // プラットフォームの支柱
             ctx.fillStyle = '#8B4513';
             ctx.beginPath();
@@ -778,6 +793,32 @@
             // 中央マーカー
             ctx.fillStyle = 'white';
             ctx.fillRect(angleIndicatorX + angleIndicatorWidth / 2 - 1, angleIndicatorY, 2, angleIndicatorHeight);
+            
+            // 次のレベルまでの進捗バー
+            const progressBarWidth = 200;
+            const progressBarHeight = 10;
+            const progressBarX = canvas.width / 2 - progressBarWidth / 2;
+            const progressBarY = 80;
+            
+            // 進捗バーの背景
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+            ctx.fillRect(progressBarX, progressBarY, progressBarWidth, progressBarHeight);
+            
+            // 進捗の計算 (現在のスコア / 次のレベルに必要なスコア)
+            const nextLevelScore = level * 50;
+            const previousLevelScore = (level - 1) * 50;
+            const progressPercentage = Math.min(1, (score - previousLevelScore) / (nextLevelScore - previousLevelScore));
+            const progressWidth = progressPercentage * progressBarWidth;
+            
+            // 進捗バーの描画
+            ctx.fillStyle = '#4CAF50';
+            ctx.fillRect(progressBarX, progressBarY, progressWidth, progressBarHeight);
+            
+            // 「次のレベルまで」のテキスト
+            ctx.fillStyle = 'white';
+            ctx.font = '12px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(`次のLv.${level+1}まであと${nextLevelScore - score}点`, canvas.width / 2, progressBarY + 25);
         }
         
         // ゲームオーバー表示
