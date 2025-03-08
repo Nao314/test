@@ -1,8 +1,10 @@
 // スコア更新用のヘルパー関数（一貫した更新を行うため）
             function updateScore(points) {
+                const oldScore = score;
                 score += points;
+                score = Math.max(0, score); // 0未満にならないよう保証
                 scoreDisplay.textContent = `スコア: ${score}`;
-                console.log(`Score updated: ${score} (added ${points})`);
+                console.log(`Score updated: ${oldScore} → ${score} (changed by ${points})`);
             }<!DOCTYPE html>
 <html>
 <head>
@@ -460,14 +462,16 @@
                         
                         if (blocks[i].onPlatform) {
                             // プラットフォーム上のブロックの場合
-                            if (xCenter > platformX && xCenter < platformX + platformWidth) {
+                            // 中心がプラットフォームの範囲内かチェック
+                            if (xCenter >= platformX && xCenter <= platformX + platformWidth) {
                                 supportFound = true;
                             }
                         } else if (blocks[i].restingOn !== null) {
                             // 他のブロック上のブロックの場合
                             const supportBlock = blocks[i].restingOn;
-                            if (xCenter > supportBlock.x && 
-                                xCenter < supportBlock.x + supportBlock.width) {
+                            // 中心が支えるブロックの範囲内かチェック
+                            if (xCenter >= supportBlock.x && 
+                                xCenter <= supportBlock.x + supportBlock.width) {
                                 supportFound = true;
                             }
                         }
@@ -493,18 +497,24 @@
                 
                 // ブロックの中心X座標
                 const blockCenterX = block.x + block.width / 2;
+                const blockLeft = block.x;
+                const blockRight = block.x + block.width;
                 
-                // ブロックがプラットフォームの幅範囲内かチェック
-                if (blockCenterX >= platformX && blockCenterX <= platformX + platformWidth) {
-                    // 傾斜に応じたY座標を計算
-                    const ratio = (blockCenterX - platformX) / platformWidth;
+                // ブロックとプラットフォームが水平方向で重なっているかチェック
+                // より寛容な判定基準に - 少しでも重なっていれば衝突とみなす
+                if (blockRight >= platformX && blockLeft <= platformX + platformWidth) {
+                    // 接触点のX座標を計算（範囲内に制限）
+                    const contactX = Math.max(platformX, Math.min(platformX + platformWidth, blockCenterX));
+                    
+                    // 接触点でのプラットフォームのY座標を計算
+                    const ratio = (contactX - platformX) / platformWidth;
                     const platformYAtBlock = platformLeftY * (1 - ratio) + platformRightY * ratio;
                     
                     const blockBottom = block.y + block.height;
                     
-                    // 衝突チェック
-                    if (blockBottom >= platformYAtBlock && 
-                        blockBottom <= platformYAtBlock + platformHeight + block.velocity.y && 
+                    // 衝突チェック - より寛容な判定閾値に変更
+                    if (blockBottom >= platformYAtBlock - 5 && 
+                        blockBottom <= platformYAtBlock + platformHeight + block.velocity.y + 5 && 
                         block.velocity.y > 0) {
                         
                         // 衝突した場合、ブロックの位置とステータスを更新
@@ -548,9 +558,11 @@
                 // 衝突チェック
                 if (dx < halfWidthSum && dy < halfHeightSum) {
                     // 上からの衝突の場合（静止ブロックの上に乗る）
-                    if (movingBlock.y + movingBlock.height <= staticBlock.y + 10 && 
+                    // より寛容な判定基準にするために20pxに変更
+                    if (movingBlock.y + movingBlock.height <= staticBlock.y + 20 && 
                         movingBlock.velocity.y > 0) {
                         
+                        // ブロックの位置を正確に調整
                         movingBlock.y = staticBlock.y - movingBlock.height;
                         movingBlock.velocity.y = 0;
                         movingBlock.velocity.x = 0;
@@ -564,7 +576,7 @@
                         return true;
                     }
                     // 側面衝突の場合
-                    else if (movingBlock.y + movingBlock.height > staticBlock.y + 10) {
+                    else if (movingBlock.y + movingBlock.height > staticBlock.y + 20) {
                         // X方向の反発
                         movingBlock.velocity.x = -movingBlock.velocity.x * 0.5;
                         
