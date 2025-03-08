@@ -1,7 +1,8 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>ブロックバランスゲーム</title>
+    <title>バランスキーパー</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <style>
         body {
             margin: 0;
@@ -12,125 +13,363 @@
             height: 100vh;
             background-color: #f0f0f0;
             font-family: Arial, sans-serif;
-        }
-        canvas {
-            border: 2px solid #333;
-            background-color: #fff;
+            touch-action: none; /* タッチ操作による画面のスクロールを防止 */
+            overflow: hidden;
         }
         #gameContainer {
             position: relative;
-            text-align: center;
+            width: 100%;
+            max-width: 600px;
+            height: 100vh;
+            max-height: 800px;
+            background-color: #87CEEB;
+            overflow: hidden;
+            touch-action: none;
         }
-        #score, #instructions {
-            margin: 10px 0;
+        canvas {
+            display: block;
+            background-color: transparent;
+            touch-action: none;
+        }
+        #scoreDisplay {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            font-size: 20px;
+            color: white;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+            z-index: 10;
+        }
+        #levelDisplay {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-size: 20px;
+            color: white;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+            z-index: 10;
+        }
+        #controlsOverlay {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 100px;
+            display: flex;
+            justify-content: space-between;
+            z-index: 10;
+            opacity: 0.3;
+        }
+        .controlButton {
+            width: 50%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+        }
+        .controlButton img {
+            width: 40px;
+            height: 40px;
+        }
+        #messageOverlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            z-index: 20;
+        }
+        #messageText {
+            font-size: 36px;
+            margin-bottom: 20px;
+            text-align: center;
+            padding: 0 20px;
+        }
+        #startButton, #restartButton {
+            padding: 15px 30px;
+            font-size: 24px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+        #startButton:hover, #restartButton:hover {
+            background-color: #45a049;
         }
     </style>
 </head>
 <body>
     <div id="gameContainer">
-        <div id="score">スコア: 0</div>
-        <canvas id="gameCanvas" width="600" height="400"></canvas>
-        <div id="instructions">←→キーでブロックを移動。プラットフォームの上にバランスよく積み重ねよう！</div>
+        <div id="scoreDisplay">スコア: 0</div>
+        <div id="levelDisplay">レベル: 1</div>
+        <canvas id="gameCanvas"></canvas>
+        
+        <div id="controlsOverlay">
+            <div id="leftControl" class="controlButton">
+                <div style="font-size: 30px; color: white;">←</div>
+            </div>
+            <div id="rightControl" class="controlButton">
+                <div style="font-size: 30px; color: white;">→</div>
+            </div>
+        </div>
+        
+        <div id="messageOverlay">
+            <div id="messageText">バランスキーパー</div>
+            <div style="font-size: 18px; text-align: center; padding: 0 20px;">
+                台を左右に動かして、落ちてくるブロックをキャッチしよう！<br>
+                バランスを崩さないように注意！
+            </div>
+            <button id="startButton">ゲームスタート</button>
+        </div>
     </div>
 
     <script>
-        // ゲーム変数
+        // キャンバスの設定
+        const gameContainer = document.getElementById('gameContainer');
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
-        const scoreElement = document.getElementById('score');
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const levelDisplay = document.getElementById('levelDisplay');
+        const messageOverlay = document.getElementById('messageOverlay');
+        const messageText = document.getElementById('messageText');
+        const startButton = document.getElementById('startButton');
+        const leftControl = document.getElementById('leftControl');
+        const rightControl = document.getElementById('rightControl');
         
-        let score = 0;
-        let gameOver = false;
-        let gameStarted = false;
-        
-        // プラットフォーム変数
-        const platformWidth = 200;
-        const platformHeight = 20;
-        let platformX = canvas.width / 2 - platformWidth / 2;
-        const platformY = canvas.height - 50;
-        let platformAngle = 0;
-        const maxAngle = Math.PI / 8; // 最大傾斜角度
-        
-        // ブロック変数
-        const blockSize = 30;
-        let blocks = [];
-        let currentBlock = null;
-        let blockFallSpeed = 2;
-        
-        // 物理変数
-        const gravity = 0.2;
-        
-        // ゲームループ
-        function gameLoop() {
-            if (!gameOver) {
-                update();
-                draw();
-                requestAnimationFrame(gameLoop);
-            } else {
-                drawGameOver();
-            }
+        // キャンバスのサイズをコンテナに合わせる
+        function resizeCanvas() {
+            canvas.width = gameContainer.clientWidth;
+            canvas.height = gameContainer.clientHeight;
+            
+            // ゲーム内の要素のサイズを更新
+            platformWidth = Math.min(canvas.width * 0.3, 180);
+            platformHeight = canvas.height * 0.02;
+            platformY = canvas.height * 0.85;
+            platformX = canvas.width / 2 - platformWidth / 2;
         }
         
-        // ゲーム初期化
-        function init() {
-            createNewBlock();
-            gameStarted = true;
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+        
+        // ゲーム変数
+        let score = 0;
+        let level = 1;
+        let gameOver = false;
+        let gameRunning = false;
+        let animationFrameId = null;
+        
+        // 台（プラットフォーム）変数
+        let platformWidth = Math.min(canvas.width * 0.3, 180);
+        let platformHeight = canvas.height * 0.02;
+        let platformY = canvas.height * 0.85;
+        let platformX = canvas.width / 2 - platformWidth / 2;
+        let platformSpeed = 10;
+        let platformAngle = 0;
+        const maxAngle = Math.PI / 6; // 最大傾き角度
+        
+        // 制御変数
+        let leftPressed = false;
+        let rightPressed = false;
+        
+        // ブロック変数
+        let blocks = [];
+        const blockColors = ['#FF5733', '#33FF57', '#3357FF', '#FF33A8', '#33A8FF', '#A833FF', '#FFFF33', '#33FFFF'];
+        const gravity = 0.3; // 重力
+        let spawnInterval; // ブロック生成間隔
+        let lastSpawnTime = 0;
+        let spawnDelay = 2000; // ミリ秒
+        
+        // ゲーム開始
+        function startGame() {
+            score = 0;
+            level = 1;
+            gameOver = false;
+            gameRunning = true;
+            blocks = [];
+            platformAngle = 0;
+            platformX = canvas.width / 2 - platformWidth / 2;
+            
+            // スコアとレベルの表示を更新
+            scoreDisplay.textContent = `スコア: ${score}`;
+            levelDisplay.textContent = `レベル: ${level}`;
+            
+            // メッセージオーバーレイを非表示
+            messageOverlay.style.display = 'none';
+            
+            // ゲームループを開始
+            lastSpawnTime = Date.now();
+            if (animationFrameId !== null) {
+                cancelAnimationFrame(animationFrameId);
+            }
             gameLoop();
         }
         
-        // 新しいブロックを作成
-        function createNewBlock() {
-            currentBlock = {
-                x: canvas.width / 2 - blockSize / 2,
-                y: 0,
-                width: blockSize,
-                height: blockSize,
-                color: getRandomColor(),
-                onPlatform: false,
-                velocity: { x: 0, y: 0 },
-                angle: 0,
-                mass: 1 + Math.random() * 0.5 // ランダムな質量
-            };
-        }
-        
-        // ランダムな色を生成
-        function getRandomColor() {
-            const colors = ['#FF5733', '#33FF57', '#3357FF', '#FF33A8', '#33A8FF', '#A833FF'];
-            return colors[Math.floor(Math.random() * colors.length)];
-        }
-        
-        // ゲーム状態の更新
-        function update() {
-            if (!gameStarted) return;
+        // ゲームループ
+        function gameLoop() {
+            if (!gameRunning) return;
             
-            // 現在のブロックを下に移動
-            if (currentBlock && !currentBlock.onPlatform) {
-                currentBlock.y += blockFallSpeed;
-                
-                // プラットフォームとの衝突チェック
-                if (checkPlatformCollision(currentBlock)) {
-                    handlePlatformCollision();
-                }
-                
-                // 他のブロックとの衝突チェック
-                for (let i = 0; i < blocks.length; i++) {
-                    if (checkBlockCollision(currentBlock, blocks[i])) {
-                        handleBlockCollision(blocks[i]);
-                        break;
+            // キー入力に基づいて台を移動
+            if (leftPressed) {
+                movePlatform(-1);
+            }
+            if (rightPressed) {
+                movePlatform(1);
+            }
+            
+            // 現在時刻を取得
+            const currentTime = Date.now();
+            
+            // 一定間隔でブロックを生成
+            if (currentTime - lastSpawnTime > spawnDelay) {
+                spawnBlock();
+                lastSpawnTime = currentTime;
+                // レベルに応じてスポーン間隔を調整
+                spawnDelay = 2000 - (level * 100);
+                spawnDelay = Math.max(spawnDelay, 500); // 最小スポーン間隔
+            }
+            
+            // ゲーム状態を更新
+            update();
+            
+            // 描画
+            draw();
+            
+            // ゲームオーバーでない場合は次のフレームを要求
+            if (!gameOver) {
+                animationFrameId = requestAnimationFrame(gameLoop);
+            } else {
+                showGameOver();
+            }
+        }
+        
+        // ブロック生成
+        function spawnBlock() {
+            const minSize = Math.min(canvas.width, canvas.height) * 0.05;
+            const maxSize = Math.min(canvas.width, canvas.height) * 0.1;
+            const size = minSize + Math.random() * (maxSize - minSize);
+            
+            // ブロックの位置はキャンバス幅内にランダム
+            const x = Math.random() * (canvas.width - size);
+            
+            // 色はランダム
+            const color = blockColors[Math.floor(Math.random() * blockColors.length)];
+            
+            // 質量は大きさに比例
+            const mass = size / minSize;
+            
+            blocks.push({
+                x: x,
+                y: -size, // キャンバスの上から出現
+                width: size,
+                height: size,
+                color: color,
+                onPlatform: false,
+                resting: false,
+                velocity: { x: 0, y: 1 + Math.random() * level * 0.5 }, // レベルに応じて初速を上げる
+                angle: 0,
+                mass: mass,
+                restingOn: null,
+                isStable: false
+            });
+        }
+        
+        // 台の移動
+        function movePlatform(direction) {
+            const moveAmount = direction * platformSpeed;
+            platformX += moveAmount;
+            
+            // 画面外に出ないように制限
+            platformX = Math.max(0, Math.min(platformX, canvas.width - platformWidth));
+            
+            // 台の上にあるブロックも一緒に移動
+            for (let i = 0; i < blocks.length; i++) {
+                if (blocks[i].onPlatform) {
+                    blocks[i].x += moveAmount;
+                } else if (blocks[i].restingOn !== null) {
+                    // 他のブロックの上に乗っているブロックも移動
+                    let shouldMove = false;
+                    let currentBlock = blocks[i];
+                    
+                    // 下のブロックをたどって、最終的に台の上にあるか確認
+                    while (currentBlock.restingOn !== null) {
+                        const restingIndex = blocks.findIndex(b => b === currentBlock.restingOn);
+                        if (restingIndex !== -1) {
+                            currentBlock = blocks[restingIndex];
+                            if (currentBlock.onPlatform) {
+                                shouldMove = true;
+                                break;
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                    
+                    if (shouldMove) {
+                        blocks[i].x += moveAmount;
                     }
                 }
+            }
+        }
+        
+        // ゲーム状態更新
+        function update() {
+            // ブロックを更新
+            for (let i = 0; i < blocks.length; i++) {
+                const block = blocks[i];
                 
-                // ブロックが画面外に落ちたかチェック
-                if (currentBlock.y > canvas.height) {
-                    createNewBlock();
+                if (!block.resting) {
+                    // 重力を適用
+                    block.velocity.y += gravity;
+                    
+                    // 位置を更新
+                    block.x += block.velocity.x;
+                    block.y += block.velocity.y;
+                    
+                    // 画面端での跳ね返り
+                    if (block.x < 0) {
+                        block.x = 0;
+                        block.velocity.x = -block.velocity.x * 0.5;
+                    } else if (block.x + block.width > canvas.width) {
+                        block.x = canvas.width - block.width;
+                        block.velocity.x = -block.velocity.x * 0.5;
+                    }
+                    
+                    // 台との衝突チェック
+                    checkPlatformCollision(block);
+                    
+                    // 他のブロックとの衝突チェック
+                    for (let j = 0; j < blocks.length; j++) {
+                        if (i !== j && blocks[j].resting) {
+                            checkBlockCollision(block, blocks[j]);
+                        }
+                    }
+                    
+                    // 画面下に落ちたらゲームオーバー
+                    if (block.y > canvas.height) {
+                        // ブロックを削除
+                        blocks.splice(i, 1);
+                        i--;
+                        score = Math.max(0, score - 5); // スコア減少
+                        scoreDisplay.textContent = `スコア: ${score}`;
+                    }
                 }
             }
             
-            // 重量分布に基づいてプラットフォームの角度を更新
+            // 台の角度を更新（ブロックの重さに基づく）
             updatePlatformAngle();
             
-            // プラットフォーム上のブロックを更新
-            updateBlocksOnPlatform();
+            // 不安定なブロックをチェック
+            checkUnstableBlocks();
             
             // ゲームオーバーチェック
             if (Math.abs(platformAngle) >= maxAngle * 0.95) {
@@ -138,105 +377,79 @@
             }
         }
         
-        // ブロックの位置に基づいてプラットフォームの角度を更新
-        function updatePlatformAngle() {
-            let leftWeight = 0;
-            let rightWeight = 0;
-            const platformCenter = platformX + platformWidth / 2;
-            
-            // 各サイドの重みを計算
+        // 不安定なブロックをチェック
+        function checkUnstableBlocks() {
             for (let i = 0; i < blocks.length; i++) {
-                if (blocks[i].onPlatform) {
-                    const blockCenter = blocks[i].x + blocks[i].width / 2;
-                    const distanceFromCenter = blockCenter - platformCenter;
-                    const torque = distanceFromCenter * blocks[i].mass;
+                if (blocks[i].resting && !blocks[i].isStable) {
+                    const xCenter = blocks[i].x + blocks[i].width / 2;
+                    let supportFound = false;
                     
-                    if (distanceFromCenter < 0) {
-                        leftWeight += Math.abs(torque);
-                    } else {
-                        rightWeight += Math.abs(torque);
-                    }
-                }
-            }
-            
-            // 新しい角度を計算
-            const netTorque = leftWeight - rightWeight;
-            const targetAngle = netTorque * 0.001;
-            
-            // 角度を徐々に変化させる
-            platformAngle += (targetAngle - platformAngle) * 0.1;
-            
-            // 角度を制限
-            platformAngle = Math.max(-maxAngle, Math.min(maxAngle, platformAngle));
-        }
-        
-        // プラットフォーム上のブロックの位置を更新
-        function updateBlocksOnPlatform() {
-            const platformCenter = platformX + platformWidth / 2;
-            
-            for (let i = 0; i < blocks.length; i++) {
-                if (blocks[i].onPlatform) {
-                    // プラットフォームの角度に基づいて新しい位置を計算
-                    const blockCenter = blocks[i].x + blocks[i].width / 2;
-                    const distanceFromCenter = blockCenter - platformCenter;
-                    const heightOffset = Math.sin(platformAngle) * distanceFromCenter;
-                    
-                    blocks[i].angle = platformAngle;
-                    blocks[i].y = platformY - blocks[i].height - heightOffset;
-                    
-                    // 傾きが大きすぎる場合、ブロックが落下する可能性あり
-                    if (Math.abs(platformAngle) > maxAngle * 0.8) {
-                        if ((platformAngle > 0 && distanceFromCenter < 0) || 
-                            (platformAngle < 0 && distanceFromCenter > 0)) {
-                            // 傾きの反対側は安定している
-                        } else {
-                            // ランダムな確率で落下
-                            if (Math.random() < 0.05 * Math.abs(platformAngle) / maxAngle) {
-                                blocks[i].onPlatform = false;
-                                blocks[i].velocity.y = 1;
-                                blocks[i].velocity.x = Math.sign(distanceFromCenter) * 2;
-                            }
+                    if (blocks[i].onPlatform) {
+                        // プラットフォーム上のブロックの場合
+                        if (xCenter > platformX && xCenter < platformX + platformWidth) {
+                            supportFound = true;
+                        }
+                    } else if (blocks[i].restingOn !== null) {
+                        // 他のブロック上のブロックの場合
+                        const supportBlock = blocks[i].restingOn;
+                        if (xCenter > supportBlock.x && 
+                            xCenter < supportBlock.x + supportBlock.width) {
+                            supportFound = true;
                         }
                     }
-                } else {
-                    // 落下中のブロックに重力を適用
-                    blocks[i].velocity.y += gravity;
-                    blocks[i].x += blocks[i].velocity.x;
-                    blocks[i].y += blocks[i].velocity.y;
-                    blocks[i].angle += 0.05;
                     
-                    // 画面外に落ちたブロックを削除
-                    if (blocks[i].y > canvas.height) {
-                        blocks.splice(i, 1);
-                        i--;
+                    // サポートが見つからない場合、ブロックを不安定にする
+                    if (!supportFound) {
+                        blocks[i].resting = false;
+                        blocks[i].restingOn = null;
+                        blocks[i].velocity.y = 0.5;
+                        blocks[i].velocity.x = (Math.random() - 0.5) * 2;
+                    } else {
+                        blocks[i].isStable = true;
                     }
                 }
             }
         }
         
-        // ブロックとプラットフォームの衝突をチェック
+        // プラットフォームとの衝突チェック
         function checkPlatformCollision(block) {
-            if (block.onPlatform) return false;
-            
-            const platformLeftX = platformX;
-            const platformRightX = platformX + platformWidth;
-            const blockBottom = block.y + block.height;
-            const blockLeft = block.x;
-            const blockRight = block.x + block.width;
-            
-            // プラットフォームの傾斜を考慮
-            const platformLeftY = platformY + Math.sin(platformAngle) * (-platformWidth / 2);
+            // プラットフォームの傾斜を考慮した高さを計算
+            const platformLeftY = platformY - Math.sin(platformAngle) * (platformWidth / 2);
             const platformRightY = platformY + Math.sin(platformAngle) * (platformWidth / 2);
             
-            // 線形補間でブロック中心のY座標を計算
-            const blockCenterX = (blockLeft + blockRight) / 2;
-            const blockRatio = (blockCenterX - platformLeftX) / platformWidth;
+            // ブロックの中心X座標
+            const blockCenterX = block.x + block.width / 2;
             
-            if (blockRatio >= 0 && blockRatio <= 1) {
-                const platformY = platformLeftY * (1 - blockRatio) + platformRightY * blockRatio;
+            // ブロックがプラットフォームの幅範囲内かチェック
+            if (blockCenterX >= platformX && blockCenterX <= platformX + platformWidth) {
+                // 傾斜に応じたY座標を計算
+                const ratio = (blockCenterX - platformX) / platformWidth;
+                const platformYAtBlock = platformLeftY * (1 - ratio) + platformRightY * ratio;
                 
-                if (blockBottom >= platformY && blockBottom <= platformY + platformHeight &&
-                    blockRight >= platformLeftX && blockLeft <= platformRightX) {
+                const blockBottom = block.y + block.height;
+                
+                // 衝突チェック
+                if (blockBottom >= platformYAtBlock && 
+                    blockBottom <= platformYAtBlock + platformHeight + block.velocity.y && 
+                    block.velocity.y > 0) {
+                    
+                    // 衝突した場合、ブロックの位置とステータスを更新
+                    block.y = platformYAtBlock - block.height;
+                    block.velocity.y = 0;
+                    block.velocity.x = 0;
+                    block.resting = true;
+                    block.onPlatform = true;
+                    block.restingOn = null;
+                    
+                    // スコア加算
+                    score += 10;
+                    scoreDisplay.textContent = `スコア: ${score}`;
+                    
+                    // レベルアップチェック
+                    if (score >= level * 100) {
+                        levelUp();
+                    }
+                    
                     return true;
                 }
             }
@@ -244,219 +457,340 @@
             return false;
         }
         
-        // プラットフォームとの衝突処理
-        function handlePlatformCollision() {
-            currentBlock.onPlatform = true;
+        // ブロック同士の衝突チェック
+        function checkBlockCollision(movingBlock, staticBlock) {
+            // 両方のブロックの中心座標
+            const movingCenter = {
+                x: movingBlock.x + movingBlock.width / 2,
+                y: movingBlock.y + movingBlock.height / 2
+            };
             
-            // プラットフォームの中心からの距離を計算
-            const platformCenter = platformX + platformWidth / 2;
-            const blockCenter = currentBlock.x + currentBlock.width / 2;
+            const staticCenter = {
+                x: staticBlock.x + staticBlock.width / 2,
+                y: staticBlock.y + staticBlock.height / 2
+            };
             
-            // プラットフォームの傾斜に合わせてブロックを配置
-            const distanceFromCenter = blockCenter - platformCenter;
-            const heightOffset = Math.sin(platformAngle) * distanceFromCenter;
-            currentBlock.y = platformY - currentBlock.height - heightOffset;
+            // 衝突判定用の距離
+            const dx = Math.abs(movingCenter.x - staticCenter.x);
+            const dy = Math.abs(movingCenter.y - staticCenter.y);
             
-            blocks.push(currentBlock);
-            score++;
-            scoreElement.textContent = `スコア: ${score}`;
-            createNewBlock();
+            const halfWidthSum = (movingBlock.width + staticBlock.width) / 2;
+            const halfHeightSum = (movingBlock.height + staticBlock.height) / 2;
             
-            // 難易度を増加
-            if (score % 5 === 0) {
-                blockFallSpeed += 0.2;
+            // 衝突チェック
+            if (dx < halfWidthSum && dy < halfHeightSum) {
+                // 上からの衝突の場合（静止ブロックの上に乗る）
+                if (movingBlock.y + movingBlock.height <= staticBlock.y + 10 && 
+                    movingBlock.velocity.y > 0) {
+                    
+                    movingBlock.y = staticBlock.y - movingBlock.height;
+                    movingBlock.velocity.y = 0;
+                    movingBlock.velocity.x = 0;
+                    movingBlock.resting = true;
+                    movingBlock.onPlatform = false;
+                    movingBlock.restingOn = staticBlock;
+                    
+                    // スコア加算
+                    score += 5;
+                    scoreDisplay.textContent = `スコア: ${score}`;
+                    
+                    return true;
+                }
+                // 側面衝突の場合
+                else if (movingBlock.y + movingBlock.height > staticBlock.y + 10) {
+                    // X方向の反発
+                    movingBlock.velocity.x = -movingBlock.velocity.x * 0.5;
+                    
+                    // 左右の調整
+                    if (movingCenter.x < staticCenter.x) {
+                        movingBlock.x = staticBlock.x - movingBlock.width;
+                    } else {
+                        movingBlock.x = staticBlock.x + staticBlock.width;
+                    }
+                    
+                    return true;
+                }
             }
+            
+            return false;
         }
         
-        // 2つのブロック間の衝突をチェック
-        function checkBlockCollision(block1, block2) {
-            if (block1.onPlatform || block1 === block2) return false;
+        // 台の角度更新
+        function updatePlatformAngle() {
+            let leftWeight = 0;
+            let rightWeight = 0;
+            const platformCenter = platformX + platformWidth / 2;
             
-            return (block1.x < block2.x + block2.width &&
-                   block1.x + block1.width > block2.x &&
-                   block1.y + block1.height > block2.y &&
-                   block1.y < block2.y + block2.height);
+            // 各ブロックの重さと位置から左右の重さを計算
+            for (let i = 0; i < blocks.length; i++) {
+                if (blocks[i].resting) {
+                    const blockCenter = blocks[i].x + blocks[i].width / 2;
+                    const distanceFromCenter = blockCenter - platformCenter;
+                    
+                    let isOnPlatform = false;
+                    
+                    // 直接プラットフォーム上にあるか、間接的に影響するかをチェック
+                    if (blocks[i].onPlatform) {
+                        isOnPlatform = true;
+                    } else {
+                        // ブロックの下のブロックをたどって、最終的に台の上にあるか確認
+                        let currentBlock = blocks[i];
+                        while (currentBlock.restingOn !== null) {
+                            const restingIndex = blocks.findIndex(b => b === currentBlock.restingOn);
+                            if (restingIndex !== -1) {
+                                currentBlock = blocks[restingIndex];
+                                if (currentBlock.onPlatform) {
+                                    isOnPlatform = true;
+                                    break;
+                                }
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if (isOnPlatform) {
+                        const torque = distanceFromCenter * blocks[i].mass;
+                        
+                        if (distanceFromCenter < 0) {
+                            leftWeight += Math.abs(torque);
+                        } else {
+                            rightWeight += Math.abs(torque);
+                        }
+                    }
+                }
+            }
+            
+            // 新しい角度を計算（重さの差に基づく）
+            const weightDifference = leftWeight - rightWeight;
+            const targetAngle = (weightDifference * 0.0005) * (1 + level * 0.1); // レベルに応じて感度が上がる
+            
+            // 角度を滑らかに変化させる
+            platformAngle += (targetAngle - platformAngle) * 0.1;
+            
+            // 角度を制限
+            platformAngle = Math.max(-maxAngle, Math.min(maxAngle, platformAngle));
         }
         
-        // 他のブロックとの衝突処理
-        function handleBlockCollision(otherBlock) {
-            currentBlock.onPlatform = true;
+        // レベルアップ
+        function levelUp() {
+            level++;
+            levelDisplay.textContent = `レベル: ${level}`;
             
-            // 積み重ねる位置を計算
-            currentBlock.y = otherBlock.y - currentBlock.height;
-            currentBlock.angle = otherBlock.angle;
+            // レベルアップメッセージを一時的に表示
+            const levelUpMsg = document.createElement('div');
+            levelUpMsg.textContent = `レベル ${level}！`;
+            levelUpMsg.style.position = 'absolute';
+            levelUpMsg.style.top = '50%';
+            levelUpMsg.style.left = '50%';
+            levelUpMsg.style.transform = 'translate(-50%, -50%)';
+            levelUpMsg.style.color = 'yellow';
+            levelUpMsg.style.fontSize = '48px';
+            levelUpMsg.style.fontWeight = 'bold';
+            levelUpMsg.style.textShadow = '2px 2px 4px rgba(0, 0, 0, 0.5)';
+            levelUpMsg.style.zIndex = '15';
+            gameContainer.appendChild(levelUpMsg);
             
-            blocks.push(currentBlock);
-            score++;
-            scoreElement.textContent = `スコア: ${score}`;
-            createNewBlock();
+            // メッセージを数秒後に削除
+            setTimeout(() => {
+                gameContainer.removeChild(levelUpMsg);
+            }, 1500);
+            
+            // 難易度の調整
+            platformSpeed = 10 + level;
+            gravity = 0.3 + level * 0.05;
         }
         
-        // ゲーム要素を描画
+        // 描画
         function draw() {
             // キャンバスをクリア
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             
-            // 背景を描画
-            drawBackground();
-            
-            // プラットフォームを描画
-            ctx.save();
-            ctx.translate(platformX + platformWidth / 2, platformY + platformHeight / 2);
-            ctx.rotate(platformAngle);
-            ctx.fillStyle = '#8B4513';
-            ctx.fillRect(-platformWidth / 2, -platformHeight / 2, platformWidth, platformHeight);
-            
-            // プラットフォームの支柱
-            ctx.fillStyle = '#654321';
-            ctx.fillRect(-5, -platformHeight / 2, 10, 40);
-            ctx.restore();
-            
-            // ブロックを描画
-            for (let i = 0; i < blocks.length; i++) {
-                drawBlock(blocks[i]);
-            }
-            
-            // 現在落下中のブロックを描画
-            if (currentBlock && !currentBlock.onPlatform) {
-                drawBlock(currentBlock);
-            }
-            
-            // ゲーム開始メッセージを描画
-            if (!gameStarted) {
-                drawStartScreen();
-            }
-        }
-        
-        // 背景を描画
-        function drawBackground() {
-            // 空
+            // 背景グラデーション
             const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
-            gradient.addColorStop(0, '#87CEEB');
-            gradient.addColorStop(1, '#E0F7FF');
+            gradient.addColorStop(0, '#6495ED');
+            gradient.addColorStop(1, '#87CEEB');
             ctx.fillStyle = gradient;
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             
-            // 地面
-            ctx.fillStyle = '#8FBC8F';
-            ctx.fillRect(0, platformY + 30, canvas.width, canvas.height - platformY - 30);
-        }
-        
-        // ブロックを描画
-        function drawBlock(block) {
+            // プラットフォームの支柱
+            ctx.fillStyle = '#8B4513';
+            ctx.beginPath();
+            ctx.moveTo(platformX + platformWidth / 2 - 5, platformY);
+            ctx.lineTo(platformX + platformWidth / 2 + 5, platformY);
+            ctx.lineTo(platformX + platformWidth / 2 + 10, canvas.height);
+            ctx.lineTo(platformX + platformWidth / 2 - 10, canvas.height);
+            ctx.closePath();
+            ctx.fill();
+            
+            // プラットフォーム（台）の描画
             ctx.save();
-            if (block.onPlatform) {
-                // プラットフォーム上のブロックを回転
-                ctx.translate(block.x + block.width / 2, block.y + block.height / 2);
-                ctx.rotate(block.angle);
-                ctx.fillStyle = block.color;
-                ctx.fillRect(-block.width / 2, -block.height / 2, block.width, block.height);
-                
-                // ブロックの枠線
-                ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
-                ctx.lineWidth = 2;
-                ctx.strokeRect(-block.width / 2, -block.height / 2, block.width, block.height);
-            } else {
-                // 落下中のブロックを描画
-                ctx.translate(block.x + block.width / 2, block.y + block.height / 2);
-                ctx.rotate(block.angle);
-                ctx.fillStyle = block.color;
-                ctx.fillRect(-block.width / 2, -block.height / 2, block.width, block.height);
-                
-                // ブロックの枠線
-                ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
-                ctx.lineWidth = 2;
-                ctx.strokeRect(-block.width / 2, -block.height / 2, block.width, block.height);
-            }
+            ctx.translate(platformX + platformWidth / 2, platformY);
+            ctx.rotate(platformAngle);
+            ctx.fillStyle = '#A0522D';
+            ctx.fillRect(-platformWidth / 2, -platformHeight / 2, platformWidth, platformHeight);
+            
+            // プラットフォームの枠線
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(-platformWidth / 2, -platformHeight / 2, platformWidth, platformHeight);
             ctx.restore();
-        }
-        
-        // 開始画面を描画
-        function drawStartScreen() {
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
             
-            ctx.fillStyle = '#fff';
-            ctx.font = '36px Arial, sans-serif';
-            ctx.textAlign = 'center';
-            ctx.fillText('ブロックバランスゲーム', canvas.width / 2, canvas.height / 2 - 40);
-            
-            ctx.font = '24px Arial, sans-serif';
-            ctx.fillText('←→キーでブロックを移動', canvas.width / 2, canvas.height / 2 + 20);
-            ctx.fillText('バランスを保ちながら積み重ねよう', canvas.width / 2, canvas.height / 2 + 60);
-            
-            ctx.font = '18px Arial, sans-serif';
-            ctx.fillText('何かキーを押してスタート', canvas.width / 2, canvas.height / 2 + 120);
-        }
-        
-        // ゲームオーバー画面を描画
-        function drawGameOver() {
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            
-            ctx.fillStyle = '#fff';
-            ctx.font = '36px Arial, sans-serif';
-            ctx.textAlign = 'center';
-            ctx.fillText('ゲームオーバー', canvas.width / 2, canvas.height / 2 - 20);
-            
-            ctx.font = '24px Arial, sans-serif';
-            ctx.fillText(`最終スコア: ${score}`, canvas.width / 2, canvas.height / 2 + 20);
-            
-            ctx.font = '18px Arial, sans-serif';
-            ctx.fillText('何かキーを押して再プレイ', canvas.width / 2, canvas.height / 2 + 60);
-        }
-        
-        // キーボード入力の処理
-        document.addEventListener('keydown', function(event) {
-            if (!gameStarted) {
-                init();
-                return;
-            }
-            
-            if (gameOver) {
-                resetGame();
-                return;
-            }
-            
-            if (currentBlock && !currentBlock.onPlatform) {
-                if (event.key === 'ArrowLeft') {
-                    currentBlock.x -= 10;
-                    if (currentBlock.x < 0) {
-                        currentBlock.x = 0;
-                    }
-                } else if (event.key === 'ArrowRight') {
-                    currentBlock.x += 10;
-                    if (currentBlock.x + currentBlock.width > canvas.width) {
-                        currentBlock.x = canvas.width - currentBlock.width;
-                    }
-                } else if (event.key === 'ArrowDown') {
-                    // 落下速度を一時的に上げる
-                    blockFallSpeed = 8;
+            // ブロックの描画
+            for (let i = 0; i < blocks.length; i++) {
+                const block = blocks[i];
+                
+                ctx.save();
+                ctx.translate(block.x + block.width / 2, block.y + block.height / 2);
+                
+                // ブロックの回転（傾斜に応じて）
+                if (block.onPlatform) {
+                    ctx.rotate(platformAngle);
+                } else if (block.resting && block.restingOn !== null) {
+                    // 下のブロックの角度に合わせる
+                    ctx.rotate(block.restingOn.angle || 0);
+                } else {
+                    // 自由落下中は少し回転させる
+                    block.angle += 0.01 * block.velocity.y;
+                    ctx.rotate(block.angle);
                 }
+                
+                // ブロックの色と枠線
+                ctx.fillStyle = block.color;
+                ctx.fillRect(-block.width / 2, -block.height / 2, block.width, block.height);
+                
+                ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(-block.width / 2, -block.height / 2, block.width, block.height);
+                
+                ctx.restore();
             }
-        });
-        
-        // キーを離した時の処理
-        document.addEventListener('keyup', function(event) {
-            if (event.key === 'ArrowDown') {
-                // 通常の落下速度に戻す
-                blockFallSpeed = 2 + Math.floor(score / 5) * 0.2;
+            
+            // 傾き角度のインジケーター
+            const angleIndicatorWidth = 100;
+            const angleIndicatorHeight = 20;
+            const angleIndicatorX = canvas.width / 2 - angleIndicatorWidth / 2;
+            const angleIndicatorY = 50;
+            
+            // 背景
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+            ctx.fillRect(angleIndicatorX, angleIndicatorY, angleIndicatorWidth, angleIndicatorHeight);
+            
+            // 現在の傾き
+            const tiltPercentage = (platformAngle / maxAngle) * 0.5 + 0.5; // 0-1の範囲に変換
+            const tiltWidth = tiltPercentage * angleIndicatorWidth;
+            
+            // 色を傾きに応じて変更（緑から赤へ）
+            let tiltColor;
+            if (tiltPercentage > 0.7 || tiltPercentage < 0.3) {
+                tiltColor = '#FF5733'; // 危険な傾き
+            } else if (tiltPercentage > 0.6 || tiltPercentage < 0.4) {
+                tiltColor = '#FFC300'; // 警告傾き
+            } else {
+                tiltColor = '#33FF57'; // 安全な傾き
             }
-        });
-        
-        // ゲームをリセット
-        function resetGame() {
-            score = 0;
-            gameOver = false;
-            gameStarted = false;
-            platformAngle = 0;
-            blocks = [];
-            blockFallSpeed = 2;
-            scoreElement.textContent = `スコア: ${score}`;
-            init();
+            
+            ctx.fillStyle = tiltColor;
+            ctx.fillRect(angleIndicatorX, angleIndicatorY, tiltWidth, angleIndicatorHeight);
+            
+            // 中央マーカー
+            ctx.fillStyle = 'white';
+            ctx.fillRect(angleIndicatorX + angleIndicatorWidth / 2 - 1, angleIndicatorY, 2, angleIndicatorHeight);
         }
         
-        // 初期画面を描画
+        // ゲームオーバー表示
+        function showGameOver() {
+            gameRunning = false;
+            
+            // メッセージオーバーレイを表示
+            messageOverlay.style.display = 'flex';
+            messageText.textContent = 'ゲームオーバー';
+            
+            // リスタートボタン
+            if (!document.getElementById('restartButton')) {
+                const restartButton = document.createElement('button');
+                restartButton.id = 'restartButton';
+                restartButton.textContent = 'もう一度プレイ';
+                restartButton.addEventListener('click', startGame);
+                messageOverlay.appendChild(restartButton);
+            } else {
+                document.getElementById('restartButton').style.display = 'block';
+            }
+            
+            // 最終スコア表示
+            const finalScore = document.createElement('div');
+            finalScore.textContent = `最終スコア: ${score}`;
+            finalScore.style.fontSize = '24px';
+            finalScore.style.marginTop = '20px';
+            messageOverlay.appendChild(finalScore);
+            
+            // スタートボタンを非表示
+            if (startButton) {
+                startButton.style.display = 'none';
+            }
+        }
+        
+        // タッチ/マウス操作のイベントリスナー
+        
+        // 左側のコントロール
+        leftControl.addEventListener('touchstart', function(e) {
+            e.preventDefault();
+            leftPressed = true;
+        });
+        
+        leftControl.addEventListener('touchend', function(e) {
+            e.preventDefault();
+            leftPressed = false;
+        });
+        
+        leftControl.addEventListener('mousedown', function() {
+            leftPressed = true;
+        });
+        
+        // 右側のコントロール
+        rightControl.addEventListener('touchstart', function(e) {
+            e.preventDefault();
+            rightPressed = true;
+        });
+        
+        rightControl.addEventListener('touchend', function(e) {
+            e.preventDefault();
+            rightPressed = false;
+        });
+        
+        rightControl.addEventListener('mousedown', function() {
+            rightPressed = true;
+        });
+        
+        // マウスアップでの制御解除（両方）
+        document.addEventListener('mouseup', function() {
+            leftPressed = false;
+            rightPressed = false;
+        });
+        
+        // キーボード操作も可能に
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft' || e.key === 'a') {
+                leftPressed = true;
+            } else if (e.key === 'ArrowRight' || e.key === 'd') {
+                rightPressed = true;
+            } else if (e.key === ' ' && !gameRunning) {
+                startGame();
+            }
+        });
+        
+        document.addEventListener('keyup', function(e) {
+            if (e.key === 'ArrowLeft' || e.key === 'a') {
+                leftPressed = false;
+            } else if (e.key === 'ArrowRight' || e.key === 'd') {
+                rightPressed = false;
+            }
+        });
+        
+        // スタートボタンのイベントリスナー
+        startButton.addEventListener('click', startGame);
+        
+        // 初期描画
         draw();
     </script>
 </body>
