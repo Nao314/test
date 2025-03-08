@@ -102,9 +102,17 @@
             border-radius: 10px;
             cursor: pointer;
             margin-top: 20px;
+            position: relative;
+            z-index: 30;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent;
         }
         #startButton:hover, #restartButton:hover {
             background-color: #45a049;
+        }
+        #startButton:active, #restartButton:active {
+            background-color: #367c39;
         }
     </style>
 </head>
@@ -787,11 +795,26 @@
             }
         });
         
+        // ページ読み込み完了時の処理
+        document.addEventListener('DOMContentLoaded', function() {
+            // 初期描画
+            draw();
+        });
+        
         // スタートボタンのイベントリスナー
-        startButton.addEventListener('click', startGame);
+        startButton.addEventListener('click', function(e) {
+            e.preventDefault();
+            startGame();
+        });
         
         // 初期描画
         draw();
+        
+        // スタートボタンを確実に動作させるため、追加のイベントリスナー
+        document.getElementById('startButton').onclick = function() {
+            startGame();
+            return false;
+        };
     </script>
 </body>
 </html>
