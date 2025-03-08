@@ -13,7 +13,7 @@
             height: 100vh;
             background-color: #f0f0f0;
             font-family: Arial, sans-serif;
-            touch-action: none; /* タッチ操作による画面のスクロールを防止 */
+            touch-action: none;
             overflow: hidden;
         }
         #gameContainer {
@@ -69,9 +69,9 @@
             background-color: rgba(255, 255, 255, 0.2);
             border: 1px solid rgba(255, 255, 255, 0.5);
         }
-        .controlButton img {
-            width: 40px;
-            height: 40px;
+        .controlButton div {
+            font-size: 30px;
+            color: white;
         }
         #messageOverlay {
             position: absolute;
@@ -107,6 +107,7 @@
             user-select: none;
             -webkit-user-select: none;
             -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
         }
         #startButton:hover, #restartButton:hover {
             background-color: #45a049;
@@ -124,10 +125,10 @@
         
         <div id="controlsOverlay">
             <div id="leftControl" class="controlButton">
-                <div style="font-size: 30px; color: white;">←</div>
+                <div>←</div>
             </div>
             <div id="rightControl" class="controlButton">
-                <div style="font-size: 30px; color: white;">→</div>
+                <div>→</div>
             </div>
         </div>
         
@@ -137,25 +138,65 @@
                 台を左右に動かして、落ちてくるブロックをキャッチしよう！<br>
                 バランスを崩さないように注意！
             </div>
-            <button id="startButton">ゲームスタート</button>
+            <button id="startButton" onclick="startGame()">ゲームスタート</button>
         </div>
     </div>
 
     <script>
-        // キャンバスの設定
-        const gameContainer = document.getElementById('gameContainer');
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
-        const scoreDisplay = document.getElementById('scoreDisplay');
-        const levelDisplay = document.getElementById('levelDisplay');
-        const messageOverlay = document.getElementById('messageOverlay');
-        const messageText = document.getElementById('messageText');
-        const startButton = document.getElementById('startButton');
-        const leftControl = document.getElementById('leftControl');
-        const rightControl = document.getElementById('rightControl');
+        // ゲーム変数を初期化
+        let canvas;
+        let ctx;
+        let scoreDisplay;
+        let levelDisplay;
+        let messageOverlay;
+        let messageText;
+        let leftControl;
+        let rightControl;
+        let score = 0;
+        let level = 1;
+        let gameOver = false;
+        let gameRunning = false;
+        let animationFrameId = null;
+        let platformWidth;
+        let platformHeight;
+        let platformY;
+        let platformX;
+        let platformSpeed = 10;
+        let platformAngle = 0;
+        const maxAngle = Math.PI / 6;
+        let leftPressed = false;
+        let rightPressed = false;
+        let blocks = [];
+        const blockColors = ['#FF5733', '#33FF57', '#3357FF', '#FF33A8', '#33A8FF', '#A833FF', '#FFFF33', '#33FFFF'];
+        const gravity = 0.3;
+        let lastSpawnTime = 0;
+        let spawnDelay = 2000;
+        
+        // DOM要素の参照を取得する関数
+        function initializeDOM() {
+            canvas = document.getElementById('gameCanvas');
+            ctx = canvas.getContext('2d');
+            scoreDisplay = document.getElementById('scoreDisplay');
+            levelDisplay = document.getElementById('levelDisplay');
+            messageOverlay = document.getElementById('messageOverlay');
+            messageText = document.getElementById('messageText');
+            leftControl = document.getElementById('leftControl');
+            rightControl = document.getElementById('rightControl');
+            
+            // エラー防止のためのチェック
+            if (!canvas || !ctx) {
+                console.error('Canvas or context not found!');
+                return false;
+            }
+            
+            return true;
+        }
         
         // キャンバスのサイズをコンテナに合わせる
         function resizeCanvas() {
+            const gameContainer = document.getElementById('gameContainer');
+            if (!gameContainer || !canvas) return;
+            
             canvas.width = gameContainer.clientWidth;
             canvas.height = gameContainer.clientHeight;
             
@@ -166,39 +207,17 @@
             platformX = canvas.width / 2 - platformWidth / 2;
         }
         
-        window.addEventListener('resize', resizeCanvas);
-        resizeCanvas();
-        
-        // ゲーム変数
-        let score = 0;
-        let level = 1;
-        let gameOver = false;
-        let gameRunning = false;
-        let animationFrameId = null;
-        
-        // 台（プラットフォーム）変数
-        let platformWidth = Math.min(canvas.width * 0.3, 180);
-        let platformHeight = canvas.height * 0.02;
-        let platformY = canvas.height * 0.85;
-        let platformX = canvas.width / 2 - platformWidth / 2;
-        let platformSpeed = 10;
-        let platformAngle = 0;
-        const maxAngle = Math.PI / 6; // 最大傾き角度
-        
-        // 制御変数
-        let leftPressed = false;
-        let rightPressed = false;
-        
-        // ブロック変数
-        let blocks = [];
-        const blockColors = ['#FF5733', '#33FF57', '#3357FF', '#FF33A8', '#33A8FF', '#A833FF', '#FFFF33', '#33FFFF'];
-        const gravity = 0.3; // 重力
-        let spawnInterval; // ブロック生成間隔
-        let lastSpawnTime = 0;
-        let spawnDelay = 2000; // ミリ秒
-        
         // ゲーム開始
         function startGame() {
+            console.log('Game starting...');
+            
+            // DOM要素が正しく初期化されているか確認
+            if (!initializeDOM()) {
+                console.error('Failed to initialize DOM elements!');
+                return;
+            }
+            
+            // ゲーム変数をリセット
             score = 0;
             level = 1;
             gameOver = false;
@@ -219,6 +238,9 @@
             if (animationFrameId !== null) {
                 cancelAnimationFrame(animationFrameId);
             }
+            
+            // ゲームループを開始
+            console.log('Starting game loop');
             gameLoop();
         }
         
@@ -362,9 +384,8 @@
                         }
                     }
                     
-                    // 画面下に落ちたらゲームオーバー
+                    // 画面下に落ちたらブロックを削除
                     if (block.y > canvas.height) {
-                        // ブロックを削除
                         blocks.splice(i, 1);
                         i--;
                         score = Math.max(0, score - 5); // スコア減少
@@ -597,12 +618,19 @@
             levelUpMsg.style.fontWeight = 'bold';
             levelUpMsg.style.textShadow = '2px 2px 4px rgba(0, 0, 0, 0.5)';
             levelUpMsg.style.zIndex = '15';
-            gameContainer.appendChild(levelUpMsg);
-            
-            // メッセージを数秒後に削除
-            setTimeout(() => {
-                gameContainer.removeChild(levelUpMsg);
-            }, 1500);
+            const gameContainer = document.getElementById('gameContainer');
+            if (gameContainer) {
+                gameContainer.appendChild(levelUpMsg);
+                
+                // メッセージを数秒後に削除
+                setTimeout(() => {
+                    try {
+                        gameContainer.removeChild(levelUpMsg);
+                    } catch (e) {
+                        console.log('Could not remove level up message');
+                    }
+                }, 1500);
+            }
             
             // 難易度の調整
             platformSpeed = 10 + level;
@@ -611,6 +639,8 @@
         
         // 描画
         function draw() {
+            if (!ctx) return;
+            
             // キャンバスをクリア
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             
@@ -711,110 +741,124 @@
             gameRunning = false;
             
             // メッセージオーバーレイを表示
-            messageOverlay.style.display = 'flex';
-            messageText.textContent = 'ゲームオーバー';
-            
-            // リスタートボタン
-            if (!document.getElementById('restartButton')) {
+            if (messageOverlay) {
+                messageOverlay.style.display = 'flex';
+                
+                // 古い子要素をクリア（リスタートボタンとスコア表示用）
+                while (messageOverlay.childNodes.length > 3) {
+                    messageOverlay.removeChild(messageOverlay.lastChild);
+                }
+                
+                if (messageText) {
+                    messageText.textContent = 'ゲームオーバー';
+                }
+                
+                // リスタートボタン
                 const restartButton = document.createElement('button');
                 restartButton.id = 'restartButton';
                 restartButton.textContent = 'もう一度プレイ';
-                restartButton.addEventListener('click', startGame);
+                restartButton.onclick = function() {
+                    startGame();
+                    return false;
+                };
                 messageOverlay.appendChild(restartButton);
-            } else {
-                document.getElementById('restartButton').style.display = 'block';
-            }
-            
-            // 最終スコア表示
-            const finalScore = document.createElement('div');
-            finalScore.textContent = `最終スコア: ${score}`;
-            finalScore.style.fontSize = '24px';
-            finalScore.style.marginTop = '20px';
-            messageOverlay.appendChild(finalScore);
-            
-            // スタートボタンを非表示
-            if (startButton) {
-                startButton.style.display = 'none';
+                
+                // 最終スコア表示
+                const finalScore = document.createElement('div');
+                finalScore.textContent = `最終スコア: ${score}`;
+                finalScore.style.fontSize = '24px';
+                finalScore.style.marginTop = '20px';
+                messageOverlay.appendChild(finalScore);
+                
+                // スタートボタンを非表示
+                const startButton = document.getElementById('startButton');
+                if (startButton) {
+                    startButton.style.display = 'none';
+                }
             }
         }
         
-        // タッチ/マウス操作のイベントリスナー
-        
-        // 左側のコントロール
-        leftControl.addEventListener('touchstart', function(e) {
-            e.preventDefault();
-            leftPressed = true;
-        });
-        
-        leftControl.addEventListener('touchend', function(e) {
-            e.preventDefault();
-            leftPressed = false;
-        });
-        
-        leftControl.addEventListener('mousedown', function() {
-            leftPressed = true;
-        });
-        
-        // 右側のコントロール
-        rightControl.addEventListener('touchstart', function(e) {
-            e.preventDefault();
-            rightPressed = true;
-        });
-        
-        rightControl.addEventListener('touchend', function(e) {
-            e.preventDefault();
-            rightPressed = false;
-        });
-        
-        rightControl.addEventListener('mousedown', function() {
-            rightPressed = true;
-        });
-        
-        // マウスアップでの制御解除（両方）
-        document.addEventListener('mouseup', function() {
-            leftPressed = false;
-            rightPressed = false;
-        });
-        
-        // キーボード操作も可能に
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'ArrowLeft' || e.key === 'a') {
-                leftPressed = true;
-            } else if (e.key === 'ArrowRight' || e.key === 'd') {
-                rightPressed = true;
-            } else if (e.key === ' ' && !gameRunning) {
-                startGame();
+        // イベントリスナーの設定
+        function setupEventListeners() {
+            const leftControl = document.getElementById('leftControl');
+            const rightControl = document.getElementById('rightControl');
+            
+            // タッチ操作
+            if (leftControl) {
+                leftControl.addEventListener('touchstart', function(e) {
+                    e.preventDefault();
+                    leftPressed = true;
+                });
+                
+                leftControl.addEventListener('touchend', function(e) {
+                    e.preventDefault();
+                    leftPressed = false;
+                });
+                
+                leftControl.addEventListener('mousedown', function() {
+                    leftPressed = true;
+                });
             }
-        });
-        
-        document.addEventListener('keyup', function(e) {
-            if (e.key === 'ArrowLeft' || e.key === 'a') {
+            
+            if (rightControl) {
+                rightControl.addEventListener('touchstart', function(e) {
+                    e.preventDefault();
+                    rightPressed = true;
+                });
+                
+                rightControl.addEventListener('touchend', function(e) {
+                    e.preventDefault();
+                    rightPressed = false;
+                });
+                
+                rightControl.addEventListener('mousedown', function() {
+                    rightPressed = true;
+                });
+            }
+            
+            // マウスアップでの制御解除
+            document.addEventListener('mouseup', function() {
                 leftPressed = false;
-            } else if (e.key === 'ArrowRight' || e.key === 'd') {
                 rightPressed = false;
+            });
+            
+            // キーボード操作
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'ArrowLeft' || e.key === 'a') {
+                    leftPressed = true;
+                } else if (e.key === 'ArrowRight' || e.key === 'd') {
+                    rightPressed = true;
+                } else if (e.key === ' ' && !gameRunning) {
+                    startGame();
+                }
+            });
+            
+            document.addEventListener('keyup', function(e) {
+                if (e.key === 'ArrowLeft' || e.key === 'a') {
+                    leftPressed = false;
+                } else if (e.key === 'ArrowRight' || e.key === 'd') {
+                    rightPressed = false;
+                }
+            });
+        }
+        
+        // ウィンドウのリサイズイベント
+        window.addEventListener('resize', resizeCanvas);
+        
+        // ページ読み込み完了時の初期化
+        window.onload = function() {
+            console.log('Window loaded');
+            if (initializeDOM()) {
+                resizeCanvas();
+                setupEventListeners();
+                draw();
+            } else {
+                console.error('Failed to initialize the game');
             }
-        });
-        
-        // ページ読み込み完了時の処理
-        document.addEventListener('DOMContentLoaded', function() {
-            // 初期描画
-            draw();
-        });
-        
-        // スタートボタンのイベントリスナー
-        startButton.addEventListener('click', function(e) {
-            e.preventDefault();
-            startGame();
-        });
-        
-        // 初期描画
-        draw();
-        
-        // スタートボタンを確実に動作させるため、追加のイベントリスナー
-        document.getElementById('startButton').onclick = function() {
-            startGame();
-            return false;
         };
+        
+        // グローバルスコープに関数を公開（HTML要素のonclickで呼び出せるようにするため）
+        window.startGame = startGame;
     </script>
 </body>
 </html>
