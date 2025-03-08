@@ -67,6 +67,11 @@
 
   <!-- ゲームオーバー時に表示されるリスタートボタン -->
   <button id="restartBtn">Restart</button>
+
+  <!-- 効果音用オーディオ（data URIを利用。必要に応じて置き換えてください） -->
+  <audio id="shootSound" src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQgAAAAA"></audio>
+  <audio id="explosionSound" src="data:audio/wav;base64,UklGRkQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YUQAAAAA"></audio>
+  <audio id="enemyShootSound" src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQgAAAAA"></audio>
   
   <script>
     const canvas = document.getElementById("gameCanvas");
@@ -81,11 +86,12 @@
       speed: 5
     };
 
-    // 弾および爆発エフェクト用の配列
+    // 自機弾、敵弾、爆発エフェクト用の配列
     const bullets = [];
+    const enemyBullets = [];
     const explosions = [];
 
-    // インベーダーの設定
+    // 敵（インベーダー）の設定
     const invaderRows = 4;
     const invaderCols = 8;
     const invaderWidth = 30;
@@ -93,18 +99,22 @@
     const invaderPadding = 10;
     const invaderOffsetLeft = 30;
     const invaderOffsetTop = 30;
+
+    // ゲーム管理用
     let score = 0;
     let gameOver = false;
+    let stage = 1;
+    let stageCleared = false;
 
-    // 敵全体の動きを管理するための形成オフセット
+    // 敵全体の動きを管理するための形成オフセットと速度（難易度で変化）
     let formationOffsetX = invaderOffsetLeft;
     let formationOffsetY = invaderOffsetTop;
     let formationDirection = 1; // 1:右方向, -1:左方向
-    const invaderSpeed = 1;
+    let invaderSpeed = 1;
     const dropDistance = 20;
     const boundaryMargin = 10;
 
-    // インベーダーの各個体の状態（status: 1=生存、0=破壊済み）
+    // 敵の各個体の状態（status: 1=生存、0=破壊済み）
     const invaders = [];
     for (let r = 0; r < invaderRows; r++) {
       invaders[r] = [];
@@ -112,6 +122,9 @@
         invaders[r][c] = { status: 1 };
       }
     }
+
+    // 敵弾の速度
+    const enemyBulletSpeed = 4;
 
     // 左右操作のフラグ
     let leftPressed = false;
@@ -123,10 +136,18 @@
       ctx.fillRect(ship.x, ship.y, ship.width, ship.height);
     }
 
-    // 弾の描画
+    // 自機弾の描画
     function drawBullets() {
       ctx.fillStyle = "#FFFF00";
       bullets.forEach(bullet => {
+        ctx.fillRect(bullet.x, bullet.y, 4, 10);
+      });
+    }
+
+    // 敵弾の描画
+    function drawEnemyBullets() {
+      ctx.fillStyle = "#00FFFF";
+      enemyBullets.forEach(bullet => {
         ctx.fillRect(bullet.x, bullet.y, 4, 10);
       });
     }
@@ -144,7 +165,7 @@
       });
     }
 
-    // インベーダーの描画（形成オフセットを利用）
+    // 敵の描画（形成オフセットを利用）
     function drawInvaders() {
       for (let r = 0; r < invaderRows; r++) {
         for (let c = 0; c < invaderCols; c++) {
@@ -158,20 +179,44 @@
       }
     }
 
-    // スコアの描画
+    // スコアおよびステージの描画
     function drawScore() {
       ctx.fillStyle = "white";
       ctx.font = "20px sans-serif";
-      ctx.fillText("Score: " + score, 10, 25);
+      ctx.textAlign = "left";
+      ctx.fillText("Score: " + score + "   Stage: " + stage, 10, 25);
     }
 
-    // 弾の更新
+    // 自機弾の更新
     function updateBullets() {
       for (let i = 0; i < bullets.length; i++) {
         bullets[i].y -= 7;
         if (bullets[i].y < 0) {
           bullets.splice(i, 1);
           i--;
+        }
+      }
+    }
+
+    // 敵弾の更新と自機との衝突判定
+    function updateEnemyBullets() {
+      for (let i = 0; i < enemyBullets.length; i++) {
+        enemyBullets[i].y += enemyBulletSpeed;
+        if (enemyBullets[i].y > canvas.height) {
+          enemyBullets.splice(i, 1);
+          i--;
+        } else {
+          // 自機との衝突判定
+          if (
+            enemyBullets[i].x > ship.x &&
+            enemyBullets[i].x < ship.x + ship.width &&
+            enemyBullets[i].y > ship.y &&
+            enemyBullets[i].y < ship.y + ship.height
+          ) {
+            gameOver = true;
+            enemyBullets.splice(i, 1);
+            i--;
+          }
         }
       }
     }
@@ -188,7 +233,7 @@
       }
     }
 
-    // 弾とインベーダーの衝突判定と、衝突時の処理（スコア加算・爆発エフェクト追加）
+    // 自機弾と敵の衝突判定（命中時はスコア加算と爆発エフェクト＆効果音）
     function collisionDetection() {
       bullets.forEach((bullet, bIndex) => {
         for (let r = 0; r < invaderRows; r++) {
@@ -205,13 +250,16 @@
                 invaders[r][c].status = 0;
                 bullets.splice(bIndex, 1);
                 score += 10;
-                // 爆発エフェクトを生成（敵の中心位置で開始）
                 explosions.push({
                   x: invX + invaderWidth / 2,
                   y: invY + invaderHeight / 2,
                   radius: 0,
                   alpha: 1.0
                 });
+                // 効果音（爆発）
+                const expSound = document.getElementById("explosionSound");
+                expSound.currentTime = 0;
+                expSound.play();
                 return;
               }
             }
@@ -220,7 +268,7 @@
       });
     }
 
-    // インベーダーの移動処理（画面端で左右反転し、下に降りる）
+    // 敵全体の移動処理（画面端で左右反転し、下に降りる）
     function updateInvaders() {
       const formationRight = formationOffsetX + (invaderCols - 1) * (invaderWidth + invaderPadding) + invaderWidth;
       const formationLeft = formationOffsetX;
@@ -233,7 +281,32 @@
       }
     }
 
-    // ゲームオーバー判定（敵がプレイヤーに近づいた場合）
+    // 敵が自機に向けて弾を撃つ処理（下段の敵からランダムに選択）
+    function enemyShooting() {
+      // ステージが上がると発射確率も上昇
+      if (Math.random() < 0.005 * stage) {
+        let aliveEnemies = [];
+        for (let c = 0; c < invaderCols; c++) {
+          for (let r = invaderRows - 1; r >= 0; r--) {
+            if (invaders[r][c].status === 1) {
+              const invX = formationOffsetX + c * (invaderWidth + invaderPadding);
+              const invY = formationOffsetY + r * (invaderHeight + invaderPadding);
+              aliveEnemies.push({ x: invX, y: invY });
+              break;
+            }
+          }
+        }
+        if (aliveEnemies.length > 0) {
+          const shooter = aliveEnemies[Math.floor(Math.random() * aliveEnemies.length)];
+          enemyBullets.push({ x: shooter.x + invaderWidth / 2 - 2, y: shooter.y + invaderHeight });
+          const enemyShot = document.getElementById("enemyShootSound");
+          enemyShot.currentTime = 0;
+          enemyShot.play();
+        }
+      }
+    }
+
+    // ゲームオーバー判定（敵が自機に近づいた場合）
     function checkGameOver() {
       for (let r = 0; r < invaderRows; r++) {
         for (let c = 0; c < invaderCols; c++) {
@@ -248,29 +321,50 @@
       }
     }
 
-    // 描画処理（全要素を再描画）
+    // ステージクリア判定：全ての敵が倒されたら次ステージへ
+    function checkStageClear() {
+      let remaining = false;
+      for (let r = 0; r < invaderRows; r++) {
+        for (let c = 0; c < invaderCols; c++) {
+          if (invaders[r][c].status === 1) {
+            remaining = true;
+            break;
+          }
+        }
+        if (remaining) break;
+      }
+      if (!remaining) {
+        stageCleared = true;
+        setTimeout(nextStage, 2000);
+      }
+    }
+
+    // 描画処理（すべての要素を再描画）
     function draw() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       drawShip();
       drawBullets();
+      drawEnemyBullets();
       drawInvaders();
       drawExplosions();
       drawScore();
     }
 
-    // メインループ：更新→描画
+    // メインループ
     function update() {
-      if (!gameOver) {
+      if (!gameOver && !stageCleared) {
         moveShip();
         updateBullets();
+        updateEnemyBullets();
         updateExplosions();
         collisionDetection();
         updateInvaders();
+        enemyShooting();
         checkGameOver();
+        checkStageClear();
       }
       draw();
       if (gameOver) {
-        // ゲームオーバー時のオーバーレイ表示
         ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.fillStyle = "white";
@@ -279,14 +373,21 @@
         ctx.fillText("Game Over", canvas.width / 2, canvas.height / 2 - 20);
         ctx.font = "20px sans-serif";
         ctx.fillText("Score: " + score, canvas.width / 2, canvas.height / 2 + 20);
-        // リスタートボタンを表示
         document.getElementById("restartBtn").style.display = "block";
+      }
+      if (stageCleared && !gameOver) {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "white";
+        ctx.font = "40px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("Stage Clear", canvas.width / 2, canvas.height / 2 - 20);
       }
       requestAnimationFrame(update);
     }
     update();
 
-    // プレイヤーの移動処理
+    // 自機の移動処理
     function moveShip() {
       if (leftPressed && ship.x > 0) {
         ship.x -= ship.speed;
@@ -320,6 +421,9 @@
     fireBtn.addEventListener("touchstart", (e) => {
       e.preventDefault();
       bullets.push({ x: ship.x + ship.width / 2 - 2, y: ship.y });
+      const shootSound = document.getElementById("shootSound");
+      shootSound.currentTime = 0;
+      shootSound.play();
     });
 
     // デスクトップ用マウス操作
@@ -329,22 +433,48 @@
     rightBtn.addEventListener("mouseup", () => { rightPressed = false; });
     fireBtn.addEventListener("mousedown", () => {
       bullets.push({ x: ship.x + ship.width / 2 - 2, y: ship.y });
+      const shootSound = document.getElementById("shootSound");
+      shootSound.currentTime = 0;
+      shootSound.play();
     });
 
     // リスタートボタンのクリックイベント
     document.getElementById("restartBtn").addEventListener("click", restartGame);
+
+    // 次のステージへ進む処理（難易度アップ）
+    function nextStage() {
+      stage++;
+      invaderSpeed += 0.5; // 敵の移動速度アップ
+      formationOffsetX = invaderOffsetLeft;
+      formationOffsetY = invaderOffsetTop;
+      formationDirection = 1;
+      // 敵状態のリセット
+      for (let r = 0; r < invaderRows; r++) {
+        for (let c = 0; c < invaderCols; c++) {
+          invaders[r][c].status = 1;
+        }
+      }
+      // 自機弾、敵弾をクリア
+      bullets.length = 0;
+      enemyBullets.length = 0;
+      stageCleared = false;
+    }
 
     // ゲームリスタート処理：各変数を初期状態に戻す
     function restartGame() {
       ship.x = canvas.width / 2 - 15;
       ship.y = canvas.height - 40;
       bullets.length = 0;
+      enemyBullets.length = 0;
       explosions.length = 0;
       score = 0;
+      stage = 1;
       gameOver = false;
+      stageCleared = false;
       formationOffsetX = invaderOffsetLeft;
       formationOffsetY = invaderOffsetTop;
       formationDirection = 1;
+      invaderSpeed = 1;
       for (let r = 0; r < invaderRows; r++) {
         for (let c = 0; c < invaderCols; c++) {
           invaders[r][c].status = 1;
