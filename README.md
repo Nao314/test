@@ -1,4 +1,10 @@
-<!DOCTYPE html>
+// レベルアップ条件チェック（独立した関数として実装）
+        function checkLevelUp() {
+            const requiredScore = level * 50;
+            if (score >= requiredScore) {
+                levelUp();
+            }
+        }<!DOCTYPE html>
 <html>
 <head>
     <title>バランスキーパー</title>
@@ -287,6 +293,9 @@
             // 描画
             draw();
             
+            // レベルアップの条件をチェック（ゲームループ内でも定期的にチェック）
+            checkLevelUp();
+            
             // ゲームオーバーでない場合は次のフレームを要求
             if (!gameOver) {
                 animationFrameId = requestAnimationFrame(gameLoop);
@@ -513,10 +522,8 @@
                     score += 10;
                     scoreDisplay.textContent = `スコア: ${score}`;
                     
-                    // レベルアップチェック (レベルアップ条件を緩和: レベル*100 → レベル*50)
-                    if (score >= level * 50) {
-                        levelUp();
-                    }
+                    // 衝突ごとにレベルアップをチェック
+                    checkLevelUp();
                     
                     return true;
                 }
@@ -643,6 +650,11 @@
         
         // レベルアップ
         function levelUp() {
+            // レベルアップ時に既にレベルが上がっていたら処理しない（重複防止）
+            if (score < level * 50) {
+                return;
+            }
+            
             level++;
             levelDisplay.textContent = `レベル: ${level}`;
             
@@ -688,6 +700,10 @@
                     }, 1000);
                 });
             }
+            
+            // レベルアップボーナス
+            score += 20;
+            scoreDisplay.textContent = `スコア: ${score}`;
         }
         
         // 描画
@@ -818,7 +834,15 @@
             ctx.fillStyle = 'white';
             ctx.font = '12px Arial';
             ctx.textAlign = 'center';
-            ctx.fillText(`次のLv.${level+1}まであと${nextLevelScore - score}点`, canvas.width / 2, progressBarY + 25);
+            
+            // 次のレベルまでの残りポイントを計算（0未満にならないように）
+            const pointsToNextLevel = Math.max(0, nextLevelScore - score);
+            
+            if (pointsToNextLevel > 0) {
+                ctx.fillText(`次のLv.${level+1}まであと${pointsToNextLevel}点`, canvas.width / 2, progressBarY + 25);
+            } else {
+                ctx.fillText(`Lv.${level+1}に上がる準備完了！`, canvas.width / 2, progressBarY + 25);
+            }
         }
         
         // ゲームオーバー表示
